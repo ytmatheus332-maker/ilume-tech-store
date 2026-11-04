@@ -47,29 +47,52 @@ function Home() {
           </div>
         </section>
 
+        {/* EXPLORAR ILUME */}
+
         <section className="categories">
           <div className="section-heading">
-            <span>EXPLORE</span>
-            <h2>Encontre o que procura.</h2>
+            <span>EXPLORE A ILUME</span>
+            <h2>Explore o universo ILUME.</h2>
           </div>
 
           <div className="category-grid">
             <a href="/iphones" className="category-card">
-              <span>01</span>
-              <h3>iPhones</h3>
-              <p>Tecnologia e desempenho.</p>
+              <span className="category-number">01</span>
+
+              <div className="category-info">
+                <h3>iPhones</h3>
+                <p>Tecnologia e desempenho.</p>
+              </div>
+
+              <span className="category-arrow" aria-hidden="true">
+                ↗
+              </span>
             </a>
 
             <a href="/acessorios" className="category-card">
-              <span>02</span>
-              <h3>Acessórios</h3>
-              <p>Detalhes que fazem diferença.</p>
+              <span className="category-number">02</span>
+
+              <div className="category-info">
+                <h3>Acessórios</h3>
+                <p>Detalhes que fazem diferença.</p>
+              </div>
+
+              <span className="category-arrow" aria-hidden="true">
+                ↗
+              </span>
             </a>
 
             <a href="/radar-tech" className="category-card">
-              <span>03</span>
-              <h3>Radar Tech</h3>
-              <p>Informação para acompanhar o futuro.</p>
+              <span className="category-number">03</span>
+
+              <div className="category-info">
+                <h3>Radar Tech</h3>
+                <p>Informação para acompanhar o futuro.</p>
+              </div>
+
+              <span className="category-arrow" aria-hidden="true">
+                ↗
+              </span>
             </a>
           </div>
         </section>
@@ -191,10 +214,7 @@ function App() {
           }
         />
 
-        <Route
-          path="/radar-tech"
-          element={<RadarTech />}
-        />
+        <Route path="/radar-tech" element={<RadarTech />} />
 
         <Route path="/login" element={<Login />} />
         <Route path="/minha-conta" element={<ProtectedAccount />} />
