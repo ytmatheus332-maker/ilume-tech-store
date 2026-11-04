@@ -7,6 +7,7 @@ import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
 import Login from "./pages/Login";
 import MinhaConta from "./pages/MinhaConta";
+import RadarTech from "./pages/RadarTech";
 import { useAuth } from "./context/AuthContext";
 import "./App.css";
 
@@ -192,13 +193,7 @@ function App() {
 
         <Route
           path="/radar-tech"
-          element={
-            <ExplorePlaceholder
-              label="ILUME RADAR"
-              title="Radar Tech."
-              description="Novidades, tendências e informações para acompanhar o futuro da tecnologia."
-            />
-          }
+          element={<RadarTech />}
         />
 
         <Route path="/login" element={<Login />} />
