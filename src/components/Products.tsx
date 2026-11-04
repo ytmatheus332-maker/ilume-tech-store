@@ -9,6 +9,8 @@ interface Product {
   price: string;
   label: string;
   image: string;
+  rating: number;
+  reviewLabel: string;
 }
 
 const products: Product[] = [
@@ -20,6 +22,8 @@ const products: Product[] = [
     price: "R$ 4.499,00",
     label: "DESTAQUE",
     image: "/images/iphone-15.jpeg",
+    rating: 5,
+    reviewLabel: "Avaliação demonstrativa",
   },
   {
     id: 2,
@@ -29,6 +33,8 @@ const products: Product[] = [
     price: "R$ 5.499,00",
     label: "POPULAR",
     image: "/images/iphone-16.jpeg",
+    rating: 5,
+    reviewLabel: "Avaliação demonstrativa",
   },
   {
     id: 3,
@@ -38,6 +44,8 @@ const products: Product[] = [
     price: "R$ 7.499,00",
     label: "PREMIUM",
     image: "/images/iphone-16-pro.jpg",
+    rating: 5,
+    reviewLabel: "Avaliação demonstrativa",
   },
 ];
 
@@ -68,7 +76,26 @@ export default function Products() {
 
             <div className="product-info">
               <h3>{product.name}</h3>
+
               <p>{product.description}</p>
+
+              <div
+                className="product-rating"
+                aria-label={`Avaliação demonstrativa de ${product.rating} de 5 estrelas`}
+              >
+                <span className="product-stars" aria-hidden="true">
+                  {"★".repeat(product.rating)}
+                </span>
+
+                <span className="product-rating-value">
+                  {product.rating.toFixed(1).replace(".", ",")}
+                </span>
+              </div>
+
+              <span className="product-review-label">
+                {product.reviewLabel}
+              </span>
+
               <strong>{product.price}</strong>
 
               <a
