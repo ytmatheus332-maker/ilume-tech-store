@@ -199,19 +199,19 @@ main {
 .category-card {
   position: relative;
   display: flex;
-  min-height: 170px;
-  flex-direction: column;
+  min-height: 175px;
+  align-items: flex-start;
   justify-content: space-between;
+  flex-direction: column;
   overflow: hidden;
   padding: 25px 26px;
   border: 0;
   border-right: 1px solid #e8e8e8;
   border-radius: 0;
   background: #fff;
+  color: #171717;
   text-decoration: none;
-  transition:
-    background .3s ease,
-    padding .3s ease;
+  transition: background .3s ease;
 }
 
 .category-card:last-child {
@@ -220,18 +220,22 @@ main {
 
 /* NUMERAÇÃO */
 
-.category-card > span {
-  display: block;
-  margin-bottom: 20px;
+.category-number {
   color: #aaa;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 2px;
 }
 
-/* TÍTULOS */
+/* CONTEÚDO */
 
-.category-card h3 {
+.category-info {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.category-info h3 {
   color: #171717;
   font-size: 20px;
   font-weight: 600;
@@ -239,22 +243,18 @@ main {
   transition: transform .3s ease;
 }
 
-/* DESCRIÇÃO */
-
-.category-card p {
-  margin-top: 7px;
+.category-info p {
   color: #888;
   font-size: 12px;
   line-height: 1.6;
-  transition: color .3s ease;
 }
 
-/* SETA */
+/* SETA MINIMALISTA */
 
-.category-card::after {
+.category-arrow {
   position: absolute;
-  top: 23px;
-  right: 24px;
+  top: 22px;
+  right: 23px;
   display: flex;
   width: 32px;
   height: 32px;
@@ -263,28 +263,24 @@ main {
   border: 1px solid #e5e5e5;
   border-radius: 50%;
   color: #555;
-  content: "↗";
   font-family: Arial, sans-serif;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 400;
+  line-height: 1;
   transition: all .3s ease;
 }
 
 /* INTERAÇÃO */
 
 .category-card:hover {
-  background: #f8f8f8;
+  background: #fafafa;
 }
 
-.category-card:hover h3 {
+.category-card:hover .category-info h3 {
   transform: translateX(3px);
 }
 
-.category-card:hover p {
-  color: #555;
-}
-
-.category-card:hover::after {
+.category-card:hover .category-arrow {
   border-color: #171717;
   background: #171717;
   color: #fff;
@@ -454,7 +450,7 @@ main {
     padding: 22px 18px;
   }
 
-  .category-card h3 {
+  .category-info h3 {
     font-size: 18px;
   }
 }
@@ -542,12 +538,12 @@ main {
 
   .category-card {
     display: grid;
-    grid-template-columns: 38px minmax(0, 1fr);
+    grid-template-columns: 38px minmax(0, 1fr) 36px;
     grid-template-rows: auto auto;
     column-gap: 13px;
     align-items: center;
-    min-height: 91px;
-    padding: 17px 8px;
+    min-height: 94px;
+    padding: 16px 5px;
     border-right: 0;
     border-bottom: 1px solid #e8e8e8;
     background: #fff;
@@ -557,51 +553,41 @@ main {
     border-bottom: 0;
   }
 
-  .category-card > span {
+  .category-number {
     grid-column: 1;
     grid-row: 1 / 3;
     align-self: center;
-    margin: 0;
-    color: #aaa;
     font-size: 10px;
     letter-spacing: 1px;
   }
 
-  .category-card h3 {
+  .category-info {
     grid-column: 2;
-    grid-row: 1;
-    align-self: end;
-    padding-right: 42px;
+    grid-row: 1 / 3;
+    gap: 5px;
+  }
+
+  .category-info h3 {
     font-size: 17px;
     letter-spacing: -.4px;
   }
 
-  .category-card p {
-    grid-column: 2;
-    grid-row: 2;
-    align-self: start;
-    margin-top: 4px;
-    padding-right: 42px;
-    color: #888;
+  .category-info p {
     font-size: 11px;
   }
 
-  .category-card::after {
-    top: 50%;
-    right: 5px;
-    width: 31px;
-    height: 31px;
-    transform: translateY(-50%);
-    font-size: 15px;
+  .category-arrow {
+    position: static;
+    grid-column: 3;
+    grid-row: 1 / 3;
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
   }
 
   .category-card:hover {
-    padding-left: 12px;
+    padding-left: 9px;
     background: #fafafa;
-  }
-
-  .category-card:hover::after {
-    transform: translateY(-50%);
   }
 
   .featured {
@@ -657,11 +643,16 @@ main {
   }
 
   .category-card {
-    min-height: 85px;
-    padding: 15px 5px;
+    min-height: 88px;
+    grid-template-columns: 32px minmax(0, 1fr) 34px;
+    column-gap: 9px;
   }
 
-  .category-card h3 {
+  .category-info h3 {
     font-size: 16px;
+  }
+
+  .category-info p {
+    font-size: 10px;
   }
 }
