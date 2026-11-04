@@ -9,6 +9,11 @@ import {
   Truck,
   Clock3,
   PackageCheck,
+  QrCode,
+  CreditCard,
+  Barcode,
+  ShieldCheck,
+  Info,
 } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import "./Checkout.css";
@@ -35,6 +40,12 @@ interface ShippingOption {
   price: number;
 }
 
+interface PaymentOption {
+  id: string;
+  name: string;
+  description: string;
+}
+
 const shippingOptions: ShippingOption[] = [
   {
     id: "pac",
@@ -49,6 +60,24 @@ const shippingOptions: ShippingOption[] = [
     description: "Entrega expressa",
     estimatedDays: "2 a 4 dias úteis",
     price: 29.9,
+  },
+];
+
+const paymentOptions: PaymentOption[] = [
+  {
+    id: "pix",
+    name: "PIX",
+    description: "Pagamento instantâneo via QR Code ou código copia e cola.",
+  },
+  {
+    id: "card",
+    name: "Cartão de crédito",
+    description: "Pagamento com cartão e possibilidade de parcelamento.",
+  },
+  {
+    id: "boleto",
+    name: "Boleto bancário",
+    description: "Pagamento por boleto bancário.",
   },
 ];
 
@@ -108,9 +137,15 @@ export default function Checkout() {
 
   const [cepStatus, setCepStatus] = useState("");
   const [selectedShipping, setSelectedShipping] = useState("pac");
+  const [showPayment, setShowPayment] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState("pix");
 
   const selectedShippingOption = shippingOptions.find(
     (option) => option.id === selectedShipping
+  );
+
+  const selectedPaymentOption = paymentOptions.find(
+    (option) => option.id === selectedPayment
   );
 
   const shippingPrice = selectedShippingOption?.price ?? 0;
@@ -224,9 +259,7 @@ export default function Checkout() {
       return;
     }
 
-    alert(
-      "Dados preenchidos com sucesso! A escolha de entrega é apenas demonstrativa. A integração de frete e pagamento será implementada posteriormente."
-    );
+    setShowPayment(true);
   }
 
   if (items.length === 0) {
@@ -500,14 +533,95 @@ export default function Checkout() {
               </div>
             </section>
 
-            <button type="submit" className="checkout-submit">
-              Continuar para pagamento
-            </button>
+            {showPayment && (
+              <section className="checkout-section checkout-payment-section">
+                <div className="checkout-section-heading">
+                  <span>04</span>
+                  <div>
+                    <h2>Forma de pagamento</h2>
+                    <p>Escolha como deseja pagar seu pedido.</p>
+                  </div>
+                </div>
 
-            <p className="checkout-security">
-              <LockKeyhole size={14} />
-              Seus dados devem ser protegidos durante todo o processo.
-            </p>
+                <div className="checkout-payment-options">
+                  {paymentOptions.map((option) => {
+                    const isSelected = selectedPayment === option.id;
+
+                    return (
+                      <label
+                        key={option.id}
+                        className={`checkout-payment-option ${
+                          isSelected
+                            ? "checkout-payment-option-selected"
+                            : ""
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="payment"
+                          value={option.id}
+                          checked={isSelected}
+                          onChange={() => setSelectedPayment(option.id)}
+                        />
+
+                        <span className="checkout-shipping-radio" />
+
+                        <span className="checkout-payment-icon">
+                          {option.id === "pix" && <QrCode size={23} />}
+                          {option.id === "card" && <CreditCard size={23} />}
+                          {option.id === "boleto" && <Barcode size={23} />}
+                        </span>
+
+                        <span className="checkout-payment-info">
+                          <strong>{option.name}</strong>
+                          <small>{option.description}</small>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="checkout-payment-notice">
+                  <Info size={17} />
+                  <div>
+                    <strong>
+                      {selectedPaymentOption?.name} selecionado
+                    </strong>
+                    <p>
+                      A integração com o sistema de pagamento será
+                      disponibilizada em uma próxima etapa. Nenhuma cobrança
+                      será realizada agora.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="checkout-payment-security">
+                  <ShieldCheck size={18} />
+                  <span>Pagamento protegido após a integração oficial.</span>
+                </div>
+
+                <button
+                  type="button"
+                  className="checkout-submit"
+                  disabled
+                >
+                  Pagamento em breve
+                </button>
+              </section>
+            )}
+
+            {!showPayment && (
+              <>
+                <button type="submit" className="checkout-submit">
+                  Continuar para pagamento
+                </button>
+
+                <p className="checkout-security">
+                  <LockKeyhole size={14} />
+                  Seus dados devem ser protegidos durante todo o processo.
+                </p>
+              </>
+            )}
           </form>
 
           <aside className="checkout-summary">
