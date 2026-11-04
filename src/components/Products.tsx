@@ -10,7 +10,8 @@ interface Product {
   label: string;
   image: string;
   rating: number;
-  reviewLabel: string;
+  review: string;
+  qualityLabel: string;
 }
 
 const products: Product[] = [
@@ -23,7 +24,8 @@ const products: Product[] = [
     label: "DESTAQUE",
     image: "/images/iphone-15.jpeg",
     rating: 5,
-    reviewLabel: "Avaliação demonstrativa",
+    review: "Excelente proposta de design e tecnologia.",
+    qualityLabel: "Qualidade em destaque",
   },
   {
     id: 2,
@@ -34,7 +36,8 @@ const products: Product[] = [
     label: "POPULAR",
     image: "/images/iphone-16.jpeg",
     rating: 5,
-    reviewLabel: "Avaliação demonstrativa",
+    review: "Uma experiência moderna e recursos interessantes.",
+    qualityLabel: "Qualidade em destaque",
   },
   {
     id: 3,
@@ -45,7 +48,8 @@ const products: Product[] = [
     label: "PREMIUM",
     image: "/images/iphone-16-pro.jpg",
     rating: 5,
-    reviewLabel: "Avaliação demonstrativa",
+    review: "Desempenho e acabamento premium.",
+    qualityLabel: "Qualidade em destaque",
   },
 ];
 
@@ -57,6 +61,17 @@ export default function Products() {
           <span>SELEÇÃO ILUME</span>
           <h2>Produtos em destaque.</h2>
           <p>Conheça nossa seleção de tecnologia.</p>
+        </div>
+
+        <div className="products-anniversary">
+          <span className="anniversary-number">10</span>
+          <div>
+            <strong>ANOS</strong>
+            <span>NO MERCADO</span>
+          </div>
+          <span className="anniversary-icon" aria-hidden="true">
+            ★
+          </span>
         </div>
       </div>
 
@@ -92,9 +107,20 @@ export default function Products() {
                 </span>
               </div>
 
-              <span className="product-review-label">
-                {product.reviewLabel}
-              </span>
+              <div className="product-review">
+                <span className="review-demo-label">
+                  COMENTÁRIO DEMONSTRATIVO
+                </span>
+
+                <p>"{product.review}"</p>
+              </div>
+
+              <div className="product-quality">
+                <span className="quality-check" aria-hidden="true">
+                  ✓
+                </span>
+                {product.qualityLabel}
+              </div>
 
               <strong>{product.price}</strong>
 
