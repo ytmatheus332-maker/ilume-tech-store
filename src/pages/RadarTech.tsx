@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, RefreshCw } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import "./RadarTech.css";
 
 interface News {
   id: string;
@@ -22,28 +23,29 @@ const categories = [
   "Apple Watch",
   "AirPods",
   "Apple Intelligence",
+  "Apple News",
 ];
 
 function identifyCategory(title: string) {
   const text = title.toLowerCase();
 
-  if (/apple intelligence|inteligência artificial|ai features/.test(text))
+  if (
+    /apple intelligence|inteligência artificial|artificial intelligence|ai features/.test(
+      text
+    )
+  ) {
     return "Apple Intelligence";
+  }
 
-  if (/apple watch|watchos/.test(text))
-    return "Apple Watch";
+  if (/apple watch|watchos/.test(text)) return "Apple Watch";
 
-  if (/airpods/.test(text))
-    return "AirPods";
+  if (/airpods/.test(text)) return "AirPods";
 
-  if (/\bipad\b|ipados/.test(text))
-    return "iPad";
+  if (/\bipad\b|ipados/.test(text)) return "iPad";
 
-  if (/\bmac\b|macbook|macos|imac/.test(text))
-    return "Mac";
+  if (/\bmac\b|macbook|macos|imac/.test(text)) return "Mac";
 
-  if (/iphone|ios/.test(text))
-    return "iPhone";
+  if (/iphone|ios/.test(text)) return "iPhone";
 
   return "Apple News";
 }
@@ -83,6 +85,7 @@ export default function RadarTech() {
       .limit(100);
 
     if (requestError) {
+      console.error("Erro ao carregar Radar Tech:", requestError);
       setError("Não foi possível carregar as notícias. Tente novamente.");
       setLoading(false);
       return;
@@ -138,6 +141,7 @@ export default function RadarTech() {
               className="radar-refresh"
               onClick={loadNews}
               disabled={loading}
+              type="button"
             >
               <RefreshCw size={15} />
               Atualizar
@@ -147,13 +151,18 @@ export default function RadarTech() {
       </header>
 
       <section className="radar-content">
-        <nav className="radar-categories" aria-label="Categorias de notícias">
+        <nav
+          className="radar-categories"
+          aria-label="Categorias de notícias"
+        >
           {categories.map((category) => (
             <button
               key={category}
+              type="button"
               className={
                 activeCategory === category ? "active" : ""
               }
+              aria-pressed={activeCategory === category}
               onClick={() => setActiveCategory(category)}
             >
               {category}
@@ -171,7 +180,7 @@ export default function RadarTech() {
           <div className="radar-message">
             <p>{error}</p>
 
-            <button onClick={loadNews}>
+            <button type="button" onClick={loadNews}>
               Tentar novamente
             </button>
           </div>
@@ -208,12 +217,15 @@ export default function RadarTech() {
                 <h2>{featuredNews.title}</h2>
 
                 <p>
-                  {featuredNews.summary || "Confira os detalhes desta notícia na fonte original."}
+                  {featuredNews.summary ||
+                    "Confira os detalhes desta notícia na fonte original."}
                 </p>
 
                 <div className="radar-news-meta">
                   <span>{featuredNews.source}</span>
-                  <span>{formatDate(featuredNews.published_at)}</span>
+                  <span>
+                    {formatDate(featuredNews.published_at)}
+                  </span>
                 </div>
 
                 <a
@@ -240,7 +252,10 @@ export default function RadarTech() {
 
               <div className="radar-news-grid">
                 {remainingNews.map((item) => (
-                  <article className="radar-news-card" key={item.id}>
+                  <article
+                    className="radar-news-card"
+                    key={item.id}
+                  >
                     {item.image_url && (
                       <a
                         href={item.url}
@@ -270,7 +285,9 @@ export default function RadarTech() {
 
                       <div className="radar-news-meta">
                         <span>{item.source}</span>
-                        <span>{formatDate(item.published_at)}</span>
+                        <span>
+                          {formatDate(item.published_at)}
+                        </span>
                       </div>
 
                       <a
