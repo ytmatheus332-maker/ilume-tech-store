@@ -48,15 +48,15 @@ const shippingOptions: ShippingOption[] = [
   {
     id: "pac",
     name: "PAC",
-    description: "Entrega econ├┤mica",
-    estimatedDays: "6 a 9 dias ├║teis",
+    description: "Entrega econômica",
+    estimatedDays: "6 a 9 dias úteis",
     price: 19.9,
   },
   {
     id: "sedex",
     name: "SEDEX",
     description: "Entrega expressa",
-    estimatedDays: "2 a 4 dias ├║teis",
+    estimatedDays: "2 a 4 dias úteis",
     price: 29.9,
   },
 ];
@@ -64,17 +64,17 @@ const paymentOptions: PaymentOption[] = [
   {
     id: "pix",
     name: "PIX",
-    description: "Pagamento instant├óneo via QR Code ou c├│digo copia e cola.",
+    description: "Pagamento instantâneo via QR Code ou código copia e cola.",
   },
   {
     id: "card",
-    name: "Cart├úo de cr├®dito",
-    description: "Pagamento com cart├úo e possibilidade de parcelamento.",
+    name: "Cartão de cr�rdito",
+    description: "Pagamento com cartão e possibilidade de parcelamento.",
   },
   {
     id: "boleto",
-    name: "Boleto banc├írio",
-    description: "Pagamento por boleto banc├írio.",
+    name: "Boleto bancário",
+    description: "Pagamento por boleto bancário.",
   },
 ];
 function formatCPF(value: string) {
@@ -206,10 +206,10 @@ export default function Checkout() {
     }
 
     if (cep.length !== 8) {
-      setCepStatus("Digite um CEP v├ílido com 8 n├║meros.");
+      setCepStatus("Digite um CEP válido com 8 números.");
       return;
     }
-    setCepStatus("Consultando endere├ºo...");
+    setCepStatus("Consultando endereço...");
     try {
       const response = await fetch(
         `https://viacep.com.br/ws/${cep}/json/`
@@ -219,7 +219,7 @@ export default function Checkout() {
       }
       const data: ViaCepResponse = await response.json();
       if (data.erro) {
-        setCepStatus("CEP n├úo encontrado. Confira os n├║meros.");
+        setCepStatus("CEP não encontrado. Confira os números.");
         return;
       }
       setAddress((current) => ({
@@ -229,10 +229,10 @@ export default function Checkout() {
         city: data.localidade || current.city,
         state: data.uf || current.state,
       }));
-      setCepStatus("Endere├ºo encontrado e preenchido.");
+      setCepStatus("Endereço encontrado e preenchido.");
     } catch {
       setCepStatus(
-        "N├úo foi poss├¡vel consultar o CEP. Preencha o endere├ºo manualmente."
+        "Não foi possível consultar o CEP. Preencha o endereço manualmente."
       );
     }
   }
@@ -305,7 +305,7 @@ export default function Checkout() {
     return (
       <main className="checkout-empty">
         <ShoppingBag size={35} />
-        <h1>Seu carrinho est├í vazio.</h1>
+        <h1>Seu carrinho está vazio.</h1>
         <p>Adicione produtos antes de iniciar sua compra.</p>
         <Link to="/">Voltar para a loja</Link>
       </main>
@@ -324,19 +324,19 @@ export default function Checkout() {
             </span>
             <h1>Pedido preparado!</h1>
             <p className="checkout-confirmation-description">
-              Seus dados foram conferidos e seu pedido est├í pronto para a
-              pr├│xima etapa de pagamento.
+              Seus dados foram conferidos e seu pedido está pronto para a
+              próxima etapa de pagamento.
             </p>
             <div className="checkout-order-number">
-              <span>N├ÜMERO DEMONSTRATIVO DO PEDIDO</span>
+              <span>NÚMERO DEMONSTRATIVO DO PEDIDO</span>
               <strong>{orderNumber}</strong>
             </div>
             <div className="checkout-confirmation-status">
               <Info size={18} />
               <div>
-                <strong>Aguardando integra├º├úo de pagamento</strong>
+                <strong>Aguardando integração de pagamento</strong>
                 <p>
-                  Nenhum pagamento foi realizado e este pedido ainda n├úo foi
+                  Nenhum pagamento foi realizado e este pedido ainda não foi
                   registrado no sistema da loja.
                 </p>
               </div>
@@ -363,7 +363,7 @@ export default function Checkout() {
                 <strong>{currencyFormatter.format(subtotal)}</strong>
               </div>
               <div className="checkout-confirmation-total">
-                <span>Entrega ÔÇö {selectedShippingOption?.name}</span>
+                <span>Entrega ��� {selectedShippingOption?.name}</span>
                 <strong>{currencyFormatter.format(shippingPrice)}</strong>
               </div>
               <div className="checkout-grand-total">
@@ -384,15 +384,15 @@ export default function Checkout() {
             <div className="checkout-confirmation-card">
               <div className="checkout-confirmation-heading">
                 <MapPin size={19} />
-                <h2>Endere├ºo de entrega</h2>
+                <h2>Endereço de entrega</h2>
               </div>
               <p>
                 {address.street}, {address.number}
-                {address.complement ? ` ÔÇö ${address.complement}` : ""}
+                {address.complement ? ` ��� ${address.complement}` : ""}
               </p>
               <p>{address.neighborhood}</p>
               <p>
-                {address.city} ÔÇö {address.state}
+                {address.city} ��� {address.state}
               </p>
               <p>CEP: {address.cep}</p>
             </div>
@@ -402,7 +402,7 @@ export default function Checkout() {
                 <h2>Entrega e pagamento</h2>
               </div>
               <p>
-                <strong>{selectedShippingOption?.name}</strong> ÔÇö{" "}
+                <strong>{selectedShippingOption?.name}</strong> ���{" "}
                 {selectedShippingOption?.description}
               </p>
               <p>
@@ -413,9 +413,9 @@ export default function Checkout() {
               </p>
             </div>
             <p className="checkout-confirmation-disclaimer">
-              Esta ├® uma confirma├º├úo demonstrativa. Os valores e prazos de
-              entrega s├úo ilustrativos. A compra real estar├í dispon├¡vel ap├│s
-              a integra├º├úo dos servi├ºos de pagamento e frete.
+              Esta �r uma confirmação demonstrativa. Os valores e prazos de
+              entrega são ilustrativos. A compra real estará disponível após
+              a integração dos serviços de pagamento e frete.
             </p>
             <Link to="/" className="checkout-confirmation-button">
               Voltar para a loja
@@ -444,7 +444,7 @@ export default function Checkout() {
                 <span>01</span>
                 <div>
                   <h2>Dados pessoais</h2>
-                  <p>Informa├º├Áes para identificar seu pedido.</p>
+                  <p>Informaç�Aes para identificar seu pedido.</p>
                 </div>
               </div>
               <div className="checkout-fields">
@@ -506,8 +506,8 @@ export default function Checkout() {
               <div className="checkout-section-heading">
                 <span>02</span>
                 <div>
-                  <h2>Endere├ºo de entrega</h2>
-                  <p>Onde voc├¬ deseja receber seu pedido?</p>
+                  <h2>Endereço de entrega</h2>
+                  <p>Onde você deseja receber seu pedido?</p>
                 </div>
               </div>
               <div className="checkout-fields">
@@ -541,7 +541,7 @@ export default function Checkout() {
                   )}
                 </label>
                 <label className="checkout-field checkout-field-full">
-                  Endere├ºo
+                  Endereço
                   <input
                     type="text"
                     name="street"
@@ -553,13 +553,13 @@ export default function Checkout() {
                   />
                 </label>
                 <label className="checkout-field">
-                  N├║mero
+                  Número
                   <input
                     type="text"
                     name="number"
                     value={address.number}
                     onChange={handleAddressChange}
-                    placeholder="N├║mero"
+                    placeholder="Número"
                     required
                   />
                 </label>
@@ -657,8 +657,8 @@ export default function Checkout() {
               <div className="checkout-shipping-notice">
                 <PackageCheck size={16} />
                 <p>
-                  Valores e prazos ilustrativos. O c├ílculo real do frete ser├í
-                  disponibilizado em uma pr├│xima etapa.
+                  Valores e prazos ilustrativos. O cálculo real do frete será
+                  disponibilizado em uma próxima etapa.
                 </p>
               </div>
             </section>
@@ -711,15 +711,15 @@ export default function Checkout() {
                       {selectedPaymentOption?.name} selecionado
                     </strong>
                     <p>
-                      A integra├º├úo com o sistema de pagamento ser├í
-                      disponibilizada em uma pr├│xima etapa. Nenhuma cobran├ºa
-                      ser├í realizada agora.
+                      A integração com o sistema de pagamento será
+                      disponibilizada em uma próxima etapa. Nenhuma cobrança
+                      será realizada agora.
                     </p>
                   </div>
                 </div>
                 <div className="checkout-payment-security">
                   <ShieldCheck size={18} />
-                  <span>Pagamento protegido ap├│s a integra├º├úo oficial.</span>
+                  <span>Pagamento protegido após a integração oficial.</span>
                 </div>
                 <button
                   type="button"
@@ -764,7 +764,7 @@ export default function Checkout() {
               <strong>{currencyFormatter.format(subtotal)}</strong>
             </div>
             <div className="checkout-total checkout-shipping-total">
-              <span>Entrega ({selectedShippingOption?.name ?? "ÔÇö"})</span>
+              <span>Entrega ({selectedShippingOption?.name ?? "���"})</span>
               <strong>{currencyFormatter.format(shippingPrice)}</strong>
             </div>
             <div className="checkout-grand-total">
@@ -772,8 +772,8 @@ export default function Checkout() {
               <strong>{currencyFormatter.format(total)}</strong>
             </div>
             <p>
-              Frete demonstrativo. O valor definitivo ser├í calculado na
-              integra├º├úo de entrega.
+              Frete demonstrativo. O valor definitivo será calculado na
+              integração de entrega.
             </p>
           </aside>
         </div>
