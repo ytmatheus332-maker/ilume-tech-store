@@ -1,4 +1,3 @@
-
 /* =====================================
    ILUME TECH STORE
    MAIN PAGE STYLES
@@ -158,17 +157,17 @@ main {
 }
 
 /* =====================================
-   EXPLORE — EDITORIAL PREMIUM
+   EXPLORE — NOVA EXPERIÊNCIA EDITORIAL
 ===================================== */
 
 .categories {
   width: calc(100% - 64px);
   max-width: 1200px;
-  margin: 105px auto 0;
+  margin: 110px auto 0;
 }
 
 .section-heading {
-  margin-bottom: 38px;
+  margin-bottom: 42px;
 }
 
 .section-heading > span {
@@ -182,10 +181,10 @@ main {
 .section-heading h2 {
   margin-top: 13px;
   color: #171717;
-  font-size: clamp(30px, 3.5vw, 42px);
+  font-size: clamp(32px, 3.7vw, 44px);
   font-weight: 600;
-  letter-spacing: -2px;
-  line-height: 1.1;
+  letter-spacing: -2.3px;
+  line-height: 1.08;
 }
 
 /* GRADE */
@@ -193,142 +192,62 @@ main {
 .category-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 18px;
+  align-items: stretch;
 }
 
-/* CARDS */
+/* BASE DOS CARDS */
 
 .category-card {
   position: relative;
   display: flex;
   min-width: 0;
-  min-height: 285px;
+  min-height: 340px;
   flex-direction: column;
   justify-content: space-between;
   overflow: hidden;
   isolation: isolate;
-  padding: 27px;
-  border: 1px solid #ededed;
-  border-radius: 7px;
-  background: #f8f8f8;
+  padding: 30px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: #fff;
   color: #171717;
   text-decoration: none;
   transition:
-    transform .35s ease,
-    background .35s ease,
-    border-color .35s ease,
-    box-shadow .35s ease;
-}
-
-.category-card:nth-child(2) {
-  background: #f3f3f3;
-}
-
-.category-card:nth-child(3) {
-  background: #191919;
-  border-color: #191919;
-  color: #fff;
-}
-
-/* FORMAS GEOMÉTRICAS */
-
-.category-card::before {
-  position: absolute;
-  z-index: -1;
-  top: 70px;
-  right: -65px;
-  width: 190px;
-  height: 190px;
-  border: 1px solid rgba(0,0,0,.11);
-  border-radius: 50%;
-  content: "";
-  transition: transform .55s ease;
-}
-
-.category-card:nth-child(1)::after {
-  position: absolute;
-  z-index: -1;
-  top: 101px;
-  right: -25px;
-  width: 125px;
-  height: 125px;
-  border: 1px solid rgba(0,0,0,.08);
-  border-radius: 50%;
-  content: "";
-}
-
-.category-card:nth-child(2)::before {
-  top: 93px;
-  right: -22px;
-  width: 155px;
-  height: 155px;
-  border-radius: 28px;
-  transform: rotate(35deg);
-}
-
-.category-card:nth-child(2)::after {
-  position: absolute;
-  z-index: -1;
-  top: 125px;
-  right: 12px;
-  width: 90px;
-  height: 90px;
-  border: 1px solid rgba(0,0,0,.09);
-  border-radius: 20px;
-  content: "";
-  transform: rotate(35deg);
-}
-
-.category-card:nth-child(3)::before {
-  top: 75px;
-  right: -55px;
-  width: 190px;
-  height: 190px;
-  border-color: rgba(255,255,255,.19);
-}
-
-.category-card:nth-child(3)::after {
-  position: absolute;
-  z-index: -1;
-  top: 112px;
-  right: -18px;
-  width: 115px;
-  height: 115px;
-  border: 1px solid rgba(255,255,255,.12);
-  border-radius: 50%;
-  content: "";
+    transform .4s ease,
+    box-shadow .4s ease,
+    background .4s ease;
 }
 
 /* NUMERAÇÃO */
 
 .category-number {
-  color: #888;
-  font-size: 10px;
+  position: relative;
+  z-index: 3;
+  color: #777;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 2px;
+  letter-spacing: 2.5px;
 }
 
-.category-card:nth-child(3) .category-number {
-  color: #aaa;
-}
-
-/* TEXTOS */
+/* CONTEÚDO */
 
 .category-info {
   position: relative;
-  z-index: 1;
+  z-index: 3;
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 10px;
 }
 
 .category-info h3 {
+  margin: 0;
   color: #171717;
-  font-size: 25px;
+  font-size: 29px;
   font-weight: 600;
-  letter-spacing: -1px;
-  line-height: 1.1;
-  transition: transform .3s ease;
+  letter-spacing: -1.5px;
+  line-height: 1.05;
+  transition: transform .35s ease;
 }
 
 .category-info p {
@@ -336,81 +255,257 @@ main {
   margin: 0;
   color: #777;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.7;
 }
 
-.category-card:nth-child(3) .category-info h3 {
-  color: #fff;
-}
-
-.category-card:nth-child(3) .category-info p {
-  color: #aaa;
-}
-
-/* SETAS PADRONIZADAS */
+/* SETA */
 
 .category-arrow {
   position: absolute;
-  z-index: 2;
-  top: 23px;
-  right: 23px;
+  z-index: 4;
+  top: 25px;
+  right: 25px;
   display: flex;
-  width: 35px;
-  height: 35px;
+  width: 39px;
+  height: 39px;
   align-items: center;
   justify-content: center;
-  border: 1px solid #dedede;
+  border: 1px solid #dcdcdc;
   border-radius: 50%;
   background: transparent;
-  color: #333;
+  color: #222;
   font-family: Arial, sans-serif;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 400;
   line-height: 1;
   transition:
-    background .3s ease,
-    color .3s ease,
-    border-color .3s ease,
-    transform .3s ease;
+    background .35s ease,
+    color .35s ease,
+    transform .35s ease,
+    border-color .35s ease;
 }
 
-.category-card:nth-child(3) .category-arrow {
-  border-color: #555;
+/* =====================================
+   CARD 01 — IPHONES
+   BRANCO / CÍRCULO MONUMENTAL
+===================================== */
+
+.category-card:nth-child(1) {
+  background: #f7f7f7;
+  border-color: #ededed;
+}
+
+.category-card:nth-child(1)::before {
+  position: absolute;
+  z-index: 0;
+  top: 48px;
+  right: -95px;
+  width: 290px;
+  height: 290px;
+  border: 1px solid rgba(0,0,0,.13);
+  border-radius: 50%;
+  content: "";
+  transition: transform .7s ease;
+}
+
+.category-card:nth-child(1)::after {
+  position: absolute;
+  z-index: 0;
+  top: 88px;
+  right: -55px;
+  width: 210px;
+  height: 210px;
+  border: 1px solid rgba(0,0,0,.09);
+  border-radius: 50%;
+  content: "";
+  transition: transform .7s ease;
+}
+
+.category-card:nth-child(1) .category-number {
+  color: #777;
+}
+
+.category-card:nth-child(1) .category-info {
+  padding-bottom: 5px;
+}
+
+.category-card:nth-child(1) .category-info h3 {
+  font-size: 34px;
+  letter-spacing: -2px;
+}
+
+/* =====================================
+   CARD 02 — ACESSÓRIOS
+   CINZA / COMPOSIÇÃO DIAGONAL
+===================================== */
+
+.category-card:nth-child(2) {
+  background: #e9e9e9;
+  border-color: #e9e9e9;
+}
+
+.category-card:nth-child(2)::before {
+  position: absolute;
+  z-index: 0;
+  top: 65px;
+  right: -55px;
+  width: 205px;
+  height: 205px;
+  border: 1px solid rgba(0,0,0,.15);
+  border-radius: 3px;
+  content: "";
+  transform: rotate(38deg);
+  transition: transform .7s ease;
+}
+
+.category-card:nth-child(2)::after {
+  position: absolute;
+  z-index: 0;
+  top: 105px;
+  right: -15px;
+  width: 125px;
+  height: 125px;
+  border: 1px solid rgba(0,0,0,.11);
+  border-radius: 3px;
+  content: "";
+  transform: rotate(38deg);
+  transition: transform .7s ease;
+}
+
+.category-card:nth-child(2) .category-number {
+  color: #686868;
+}
+
+.category-card:nth-child(2) .category-info {
+  max-width: 190px;
+}
+
+.category-card:nth-child(2) .category-info h3 {
+  max-width: 170px;
+  font-size: 31px;
+  line-height: 1.02;
+}
+
+/* =====================================
+   CARD 03 — RADAR TECH
+   PRETO / CÍRCULOS CONCÊNTRICOS
+===================================== */
+
+.category-card:nth-child(3) {
+  background:
+    radial-gradient(circle at 80% 35%, #303030 0%, #191919 48%, #111 100%);
+  border-color: #191919;
   color: #fff;
 }
 
-/* EFEITOS APENAS EM DISPOSITIVOS COM MOUSE */
+.category-card:nth-child(3)::before {
+  position: absolute;
+  z-index: 0;
+  top: 42px;
+  right: -105px;
+  width: 300px;
+  height: 300px;
+  border: 1px solid rgba(255,255,255,.23);
+  border-radius: 50%;
+  content: "";
+  transition: transform .7s ease;
+}
+
+.category-card:nth-child(3)::after {
+  position: absolute;
+  z-index: 0;
+  top: 88px;
+  right: -58px;
+  width: 205px;
+  height: 205px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 50%;
+  content: "";
+  transition: transform .7s ease;
+}
+
+.category-card:nth-child(3) .category-number {
+  color: #bcbcbc;
+}
+
+.category-card:nth-child(3) .category-info h3 {
+  max-width: 190px;
+  color: #fff;
+  font-size: 32px;
+  letter-spacing: -1.7px;
+}
+
+.category-card:nth-child(3) .category-info p {
+  color: #b5b5b5;
+}
+
+.category-card:nth-child(3) .category-arrow {
+  border-color: #666;
+  color: #fff;
+}
+
+/* =====================================
+   INTERAÇÕES
+===================================== */
 
 @media (hover: hover) and (pointer: fine) {
   .category-card:hover {
-    transform: translateY(-5px);
-    border-color: #d5d5d5;
-    background: #fff;
-    box-shadow: 0 18px 40px rgba(0,0,0,.06);
+    transform: translateY(-7px);
+    box-shadow: 0 22px 45px rgba(0,0,0,.09);
   }
 
-  .category-card:hover::before {
-    transform: scale(1.12);
+  .category-card:nth-child(1):hover {
+    background: #fff;
+  }
+
+  .category-card:nth-child(1):hover::before {
+    transform: scale(1.1);
+  }
+
+  .category-card:nth-child(1):hover::after {
+    transform: scale(1.13);
+  }
+
+  .category-card:nth-child(2):hover {
+    background: #dedede;
   }
 
   .category-card:nth-child(2):hover::before {
-    transform: rotate(35deg) scale(1.12);
+    transform: rotate(45deg) scale(1.08);
   }
 
-  .category-card:hover .category-info h3 {
-    transform: translateX(3px);
-  }
-
-  .category-card:hover .category-arrow {
-    border-color: #171717;
-    background: #171717;
-    color: #fff;
-    transform: translate(2px, -2px);
+  .category-card:nth-child(2):hover::after {
+    transform: rotate(45deg) scale(1.1);
   }
 
   .category-card:nth-child(3):hover {
-    background: #292929;
-    border-color: #292929;
+    background:
+      radial-gradient(circle at 80% 35%, #393939 0%, #222 48%, #171717 100%);
+  }
+
+  .category-card:nth-child(3):hover::before {
+    transform: scale(1.1);
+  }
+
+  .category-card:nth-child(3):hover::after {
+    transform: scale(1.12);
+  }
+
+  .category-card:hover .category-info h3 {
+    transform: translateX(4px);
+  }
+
+  .category-card:hover .category-arrow {
+    transform: translate(3px, -3px);
+    border-color: #171717;
+    background: #171717;
+    color: #fff;
+  }
+
+  .category-card:nth-child(3):hover .category-arrow {
+    border-color: #fff;
+    background: #fff;
+    color: #171717;
   }
 }
 
@@ -579,12 +674,21 @@ main {
   }
 
   .category-card {
-    min-height: 260px;
+    min-height: 300px;
     padding: 22px;
   }
 
   .category-info h3 {
-    font-size: 21px;
+    font-size: 23px;
+  }
+
+  .category-card:nth-child(1) .category-info h3 {
+    font-size: 27px;
+  }
+
+  .category-card:nth-child(2) .category-info h3,
+  .category-card:nth-child(3) .category-info h3 {
+    font-size: 25px;
   }
 }
 
@@ -644,11 +748,11 @@ main {
 
   .categories {
     width: calc(100% - 40px);
-    margin-top: 65px;
+    margin-top: 70px;
   }
 
   .section-heading {
-    margin-bottom: 27px;
+    margin-bottom: 30px;
   }
 
   .section-heading > span {
@@ -659,74 +763,95 @@ main {
   .section-heading h2 {
     max-width: 340px;
     margin-top: 11px;
-    font-size: 29px;
-    letter-spacing: -1.3px;
-    line-height: 1.16;
+    font-size: 30px;
+    letter-spacing: -1.5px;
+    line-height: 1.15;
   }
 
   .category-grid {
     grid-template-columns: 1fr;
-    gap: 12px;
+    gap: 14px;
   }
 
   .category-card {
-    min-height: 190px;
-    padding: 22px;
-    border-radius: 7px;
+    min-height: 225px;
+    padding: 25px;
+    border-radius: 5px;
   }
 
-  .category-card::before {
-    top: 30px;
-    right: -45px;
-    width: 155px;
-    height: 155px;
+  /* IPHONES MOBILE */
+
+  .category-card:nth-child(1)::before {
+    top: 15px;
+    right: -70px;
+    width: 245px;
+    height: 245px;
   }
 
   .category-card:nth-child(1)::after {
-    top: 55px;
-    right: -10px;
-    width: 105px;
-    height: 105px;
+    top: 50px;
+    right: -35px;
+    width: 175px;
+    height: 175px;
   }
 
+  .category-card:nth-child(1) .category-info h3 {
+    font-size: 31px;
+  }
+
+  /* ACESSÓRIOS MOBILE */
+
   .category-card:nth-child(2)::before {
-    top: 45px;
-    right: -15px;
-    width: 130px;
-    height: 130px;
+    top: 25px;
+    right: -45px;
+    width: 175px;
+    height: 175px;
   }
 
   .category-card:nth-child(2)::after {
-    top: 65px;
-    right: 15px;
-    width: 80px;
-    height: 80px;
-  }
-
-  .category-card:nth-child(3)::before {
-    top: 30px;
-    right: -45px;
-    width: 155px;
-    height: 155px;
-  }
-
-  .category-card:nth-child(3)::after {
     top: 60px;
     right: -5px;
     width: 105px;
     height: 105px;
   }
 
+  .category-card:nth-child(2) .category-info {
+    max-width: 200px;
+  }
+
+  .category-card:nth-child(2) .category-info h3 {
+    font-size: 29px;
+  }
+
+  /* RADAR TECH MOBILE */
+
+  .category-card:nth-child(3)::before {
+    top: 10px;
+    right: -75px;
+    width: 250px;
+    height: 250px;
+  }
+
+  .category-card:nth-child(3)::after {
+    top: 45px;
+    right: -40px;
+    width: 180px;
+    height: 180px;
+  }
+
+  .category-card:nth-child(3) .category-info h3 {
+    max-width: 220px;
+    font-size: 31px;
+  }
+
+  /* ELEMENTOS COMPARTILHADOS */
+
   .category-number {
     font-size: 10px;
   }
 
   .category-info {
-    gap: 7px;
-  }
-
-  .category-info h3 {
-    font-size: 23px;
+    gap: 8px;
   }
 
   .category-info p {
@@ -735,15 +860,15 @@ main {
   }
 
   .category-arrow {
-    top: 19px;
-    right: 19px;
-    width: 32px;
-    height: 32px;
+    top: 20px;
+    right: 20px;
+    width: 35px;
+    height: 35px;
   }
 
   .featured {
     min-height: 230px;
-    margin-top: 65px;
+    margin-top: 70px;
     padding: 50px 24px;
   }
 
@@ -794,12 +919,12 @@ main {
   }
 
   .category-card {
-    min-height: 180px;
-    padding: 19px;
+    min-height: 210px;
+    padding: 20px;
   }
 
   .category-info h3 {
-    font-size: 21px;
+    font-size: 23px;
   }
 
   .category-info p {
