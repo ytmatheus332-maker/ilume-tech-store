@@ -1,225 +1,290 @@
 
-const FEEDS = [
-  {
-    url: "https://www.apple.com/newsroom/rss-feed.rss",
-    source: "Apple Newsroom",
-  },
-  {
-    url: "https://developer.apple.com/news/rss/news.rss",
-    source: "Apple Developer",
-  },
-  {
-    url: "https://feeds.macrumors.com/MacRumors-All",
-    source: "MacRumors",
-  },
+import { useEffect, useMemo, useState } from "react";
+import { ArrowUpRight, RefreshCw } from "lucide-react";
+import { supabase } from "../lib/supabase";
+import "./RadarTech.css";
+
+interface News {
+  id: string;
+  title: string;
+  summary: string | null;
+  url: string;
+  source: string;
+  category: string;
+  image_url: string | null;
+  published_at: string | null;
+}
+
+const categories = [
+  "Todas",
+  "iPhone",
+  "Mac",
+  "iPad",
+  "Apple Watch",
+  "AirPods",
+  "Apple Intelligence",
+  "Apple News",
 ];
 
-function decode(value: string) {
-  return value
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .trim();
+function identifyCategory(title: string) {
+  const text = title.toLowerCase();
+
+  if (/apple intelligence|inteligência artificial|artificial intelligence|ai features/.test(text))
+    return "Apple Intelligence";
+
+  if (/apple watch|watchos/.test(text)) return "Apple Watch";
+  if (/airpods/.test(text)) return "AirPods";
+  if (/\bipad\b|ipados/.test(text)) return "iPad";
+  if (/\bmac\b|macbook|macos|imac/.test(text)) return "Mac";
+  if (/iphone|ios/.test(text)) return "iPhone";
+
+  return "Apple News";
 }
 
-function getTag(xml: string, tag: string) {
-  const match = xml.match(
-    new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i")
+function formatDate(date: string | null) {
+  if (!date) return "Data não disponível";
+
+  const parsed = new Date(date);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "Data não disponível";
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(parsed);
+}
+
+export default function RadarTech() {
+  const [news, setNews] = useState<News[]>([]);
+  const [activeCategory, setActiveCategory] = useState("Todas");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function loadNews() {
+    setLoading(true);
+    setError("");
+
+    const { data, error: requestError } = await supabase
+      .from("radar_tech_news")
+      .select(
+        "id, title, summary, url, source, category, image_url, published_at"
+      )
+      .order("published_at", { ascending: false })
+      .limit(100);
+
+    if (requestError) {
+      console.error("Erro ao carregar Radar Tech:", requestError);
+      setError("Não foi possível carregar as notícias. Tente novamente.");
+      setLoading(false);
+      return;
+    }
+
+    setNews(data || []);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadNews();
+  }, []);
+
+  const categorizedNews = useMemo(
+    () =>
+      news.map((item) => ({
+        ...item,
+        detectedCategory: identifyCategory(item.title),
+      })),
+    [news]
   );
 
-  return match ? decode(match[1]) : "";
-}
+  const filteredNews = useMemo(() => {
+    if (activeCategory === "Todas") return categorizedNews;
 
-function getImage(item: string) {
-  const media =
-    item.match(/<media:content[^>]+url=["']([^"']+)["']/i) ||
-    item.match(/<enclosure[^>]+url=["']([^"']+)["']/i) ||
-    item.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i);
-
-  if (media) return media[1];
-
-  const html = getTag(item, "description");
-  const image = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-
-  return image ? image[1] : null;
-}
-
-function cleanText(value: string) {
-  return value
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 1000);
-}
-
-async function translateText(value: string): Promise<string> {
-  const text = cleanText(value);
-
-  if (!text) return "";
-
-  try {
-    const endpoint =
-      "https://translate.googleapis.com/translate_a/single" +
-      "?client=gtx&sl=auto&tl=pt&dt=t&q=" +
-      encodeURIComponent(text);
-
-    const response = await fetch(endpoint);
-
-    if (!response.ok) {
-      return text;
-    }
-
-    const result = await response.json();
-
-    const translated = Array.isArray(result?.[0])
-      ? result[0]
-          .map((part: any) => part?.[0] || "")
-          .join("")
-      : "";
-
-    return translated.trim() || text;
-  } catch (error) {
-    console.error("Erro na tradução:", error);
-    return text;
-  }
-}
-
-function getItems(xml: string, source: string) {
-  const items = xml.match(/<item\b[\s\S]*?<\/item>/gi) || [];
-
-  return items
-    .map((item) => {
-      const title = getTag(item, "title");
-      const link = getTag(item, "link");
-      const description = getTag(item, "description");
-      const date = getTag(item, "pubDate");
-
-      return {
-        title,
-        summary: cleanText(description).slice(0, 300),
-        url: link,
-        source,
-        category: "Apple News",
-        image_url: getImage(item),
-        published_at: date
-          ? new Date(date).toISOString()
-          : new Date().toISOString(),
-      };
-    })
-    .filter((item) => item.title && item.url);
-}
-
-export default async function handler(req: any, res: any) {
-  if (req.method !== "GET") {
-    return res.status(405).json({
-      error: "Método não permitido.",
-    });
-  }
-
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (
-    !cronSecret ||
-    req.headers.authorization !== `Bearer ${cronSecret}`
-  ) {
-    return res.status(401).json({
-      error: "Não autorizado.",
-    });
-  }
-
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    return res.status(500).json({
-      error: "Configuração do Supabase incompleta.",
-    });
-  }
-
-  try {
-    const results = await Promise.allSettled(
-      FEEDS.map(async (feed) => {
-        const response = await fetch(feed.url);
-
-        if (!response.ok) {
-          throw new Error(`Falha ao consultar ${feed.source}`);
-        }
-
-        const xml = await response.text();
-
-        return getItems(xml, feed.source);
-      })
+    return categorizedNews.filter(
+      (item) => item.detectedCategory === activeCategory
     );
+  }, [categorizedNews, activeCategory]);
 
-    const news = results
-      .filter((result) => result.status === "fulfilled")
-      .flatMap((result: any) => result.value)
-      .filter((item) => {
-        try {
-          return new URL(item.url).protocol === "https:";
-        } catch {
-          return false;
-        }
-      });
+  const featuredNews = filteredNews[0];
+  const remainingNews = filteredNews.slice(1);
 
-    if (news.length === 0) {
-      return res.status(502).json({
-        error: "Nenhuma notícia foi recebida das fontes.",
-      });
-    }
+  return (
+    <main className="radar-page">
+      <header className="radar-header">
+        <div className="radar-header-inner">
+          <span className="radar-eyebrow">ILUME TECH JOURNAL</span>
 
-    const translatedNews = await Promise.all(
-      news.map(async (item) => {
-        const [title, summary] = await Promise.all([
-          translateText(item.title),
-          translateText(item.summary),
-        ]);
+          <h1>
+            Radar <span>Tech.</span>
+          </h1>
 
-        return {
-          ...item,
-          title,
-          summary,
-        };
-      })
-    );
+          <p>
+            O universo Apple, acompanhado de perto.
+            Notícias, novidades e inovação em um só lugar.
+          </p>
 
-    const databaseResponse = await fetch(
-      `${supabaseUrl.replace(/\/$/, "")}/rest/v1/radar_tech_news?on_conflict=url`,
-      {
-        method: "POST",
-        headers: {
-          apikey: supabaseKey,
-          Authorization: `Bearer ${supabaseKey}`,
-          "Content-Type": "application/json",
-          Prefer: "resolution=merge-duplicates,return=minimal",
-        },
-        body: JSON.stringify(translatedNews),
-      }
-    );
+          <div className="radar-header-bottom">
+            <span>APPLE · TECNOLOGIA · INOVAÇÃO</span>
 
-    if (!databaseResponse.ok) {
-      const error = await databaseResponse.text();
-      throw new Error(error);
-    }
+            <button
+              className="radar-refresh"
+              onClick={loadNews}
+              disabled={loading}
+              type="button"
+            >
+              <RefreshCw size={15} />
+              Atualizar
+            </button>
+          </div>
+        </div>
+      </header>
 
-    return res.status(200).json({
-      success: true,
-      received: news.length,
-      translated: translatedNews.length,
-      message: "Radar Tech atualizado em português brasileiro.",
-    });
-  } catch (error) {
-    console.error("Erro no Radar Tech:", error);
+      <section className="radar-content">
+        <nav className="radar-categories" aria-label="Categorias de notícias">
+          {categories.map((category) => (
+            <button
+              key={category}
+              type="button"
+              className={activeCategory === category ? "active" : ""}
+              aria-pressed={activeCategory === category}
+              onClick={() => setActiveCategory(category)}
+            >
+              {category}
+            </button>
+          ))}
+        </nav>
 
-    return res.status(500).json({
-      error:
-        error instanceof Error
-          ? error.message
-          : "Erro ao atualizar notícias.",
-    });
-  }
+        {loading && (
+          <div className="radar-message">
+            Carregando notícias...
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="radar-message">
+            <p>{error}</p>
+            <button type="button" onClick={loadNews}>
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && filteredNews.length === 0 && (
+          <div className="radar-message">
+            Nenhuma notícia encontrada nesta categoria.
+          </div>
+        )}
+
+        {!loading && !error && featuredNews && (
+          <>
+            <section className="radar-featured">
+              {featuredNews.image_url && (
+                <a
+                  href={featuredNews.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="radar-featured-image"
+                >
+                  <img
+                    src={featuredNews.image_url}
+                    alt={featuredNews.title}
+                  />
+                </a>
+              )}
+
+              <div className="radar-featured-content">
+                <span className="radar-featured-label">
+                  DESTAQUE · {featuredNews.detectedCategory}
+                </span>
+
+                <h2>{featuredNews.title}</h2>
+
+                <p>
+                  {featuredNews.summary ||
+                    "Confira os detalhes desta notícia na fonte original."}
+                </p>
+
+                <div className="radar-news-meta">
+                  <span>{featuredNews.source}</span>
+                  <span>{formatDate(featuredNews.published_at)}</span>
+                </div>
+
+                <a
+                  href={featuredNews.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="radar-read-link"
+                >
+                  Ler matéria original
+                  <ArrowUpRight size={17} />
+                </a>
+              </div>
+            </section>
+
+            <section className="radar-latest">
+              <div className="radar-section-heading">
+                <div>
+                  <span>ACOMPANHE</span>
+                  <h2>Últimas notícias.</h2>
+                </div>
+
+                <span>{filteredNews.length} notícias</span>
+              </div>
+
+              <div className="radar-news-grid">
+                {remainingNews.map((item) => (
+                  <article className="radar-news-card" key={item.id}>
+                    {item.image_url && (
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="radar-card-image"
+                      >
+                        <img
+                          src={item.image_url}
+                          alt={item.title}
+                          loading="lazy"
+                        />
+                      </a>
+                    )}
+
+                    <div className="radar-card-content">
+                      <span className="radar-card-category">
+                        {item.detectedCategory}
+                      </span>
+
+                      <h3>{item.title}</h3>
+
+                      <p>
+                        {item.summary ||
+                          "Acesse a fonte original para conferir todos os detalhes."}
+                      </p>
+
+                      <div className="radar-news-meta">
+                        <span>{item.source}</span>
+                        <span>{formatDate(item.published_at)}</span>
+                      </div>
+
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="radar-read-link"
+                      >
+                        Ler matéria
+                        <ArrowUpRight size={16} />
+                      </a>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+      </section>
+    </main>
+  );
 }
