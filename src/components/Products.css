@@ -22,6 +22,8 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 20px;
   width: 100%;
   margin-bottom: 38px;
   text-align: left;
@@ -53,17 +55,20 @@
 
 /* SELO INSTITUCIONAL */
 
-.products-anniversary {
-  display: flex;
+.products .products-anniversary {
+  display: flex !important;
+  visibility: visible;
+  opacity: 1;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
   padding: 9px 0 9px 16px;
   border-left: 1px solid #d8d8d8;
   color: #171717;
-  flex-shrink: 0;
 }
 
-.anniversary-number {
+.products .anniversary-number {
+  display: block;
   color: #171717;
   font-size: 34px;
   font-weight: 600;
@@ -71,20 +76,20 @@
   line-height: 1;
 }
 
-.products-anniversary div {
+.products .products-anniversary div {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-.products-anniversary div strong {
+.products .products-anniversary div strong {
   color: #171717;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 1.5px;
 }
 
-.products-anniversary div span {
+.products .products-anniversary div span {
   color: #777;
   font-size: 9px;
   letter-spacing: 1.2px;
@@ -193,10 +198,22 @@
   line-height: 1.7;
 }
 
-/* AVALIAÇÕES */
+/* ESTRELAS */
 
-.product-rating {
-  display: none;
+.products .product-rating {
+  display: flex !important;
+  visibility: visible;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.products .product-stars {
+  display: inline-block;
+  color: #b5b5b5;
+  font-size: 15px;
+  letter-spacing: 2px;
+  line-height: 1;
 }
 
 /* DESTAQUE DO PRODUTO */
@@ -329,11 +346,12 @@
     letter-spacing: -1px;
   }
 
-  .products-anniversary {
+  .products .products-anniversary {
+    align-self: flex-start;
     padding: 7px 0 7px 13px;
   }
 
-  .anniversary-number {
+  .products .anniversary-number {
     font-size: 30px;
   }
 
