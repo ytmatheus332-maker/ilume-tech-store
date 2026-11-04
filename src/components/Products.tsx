@@ -79,14 +79,16 @@ export default function Products() {
           </p>
         </div>
 
-        <div className="products-anniversary">
-          <span className="anniversary-number">10</span>
+        {!isIPhonesPage && (
+          <div className="products-anniversary">
+            <span className="anniversary-number">10</span>
 
-          <div>
-            <strong>ANOS</strong>
-            <span>DE MERCADO</span>
+            <div>
+              <strong>ANOS</strong>
+              <span>DE MERCADO</span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="products-grid">
