@@ -103,6 +103,41 @@ function Home() {
   );
 }
 
+function IPhonesPage() {
+  return (
+    <main>
+      <section className="featured">
+        <span>ILUME COLLECTION</span>
+        <h2>iPhones.</h2>
+        <p>
+          Tecnologia, desempenho e design em uma seleção
+          especial de iPhones.
+        </p>
+      </section>
+
+      <Products />
+    </main>
+  );
+}
+
+function ExplorePlaceholder({
+  label,
+  title,
+  description,
+}: {
+  label: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <main className="featured">
+      <span>{label}</span>
+      <h2>{title}</h2>
+      <p>{description}</p>
+    </main>
+  );
+}
+
 function ProtectedAccount() {
   const { user, loading } = useAuth();
 
@@ -141,11 +176,37 @@ function App() {
 
       <Routes>
         <Route path="/" element={<Home />} />
+
+        <Route path="/iphones" element={<IPhonesPage />} />
+
+        <Route
+          path="/acessorios"
+          element={
+            <ExplorePlaceholder
+              label="ILUME COLLECTION"
+              title="Acessórios."
+              description="Estamos preparando uma seleção especial de acessórios para complementar sua experiência."
+            />
+          }
+        />
+
+        <Route
+          path="/radar-tech"
+          element={
+            <ExplorePlaceholder
+              label="ILUME RADAR"
+              title="Radar Tech."
+              description="Novidades, tendências e informações para acompanhar o futuro da tecnologia."
+            />
+          }
+        />
+
         <Route path="/login" element={<Login />} />
         <Route path="/minha-conta" element={<ProtectedAccount />} />
         <Route path="/produto/:slug" element={<ProductDetails />} />
         <Route path="/carrinho" element={<Cart />} />
         <Route path="/checkout" element={<Checkout />} />
+
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
