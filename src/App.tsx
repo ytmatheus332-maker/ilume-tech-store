@@ -1,10 +1,13 @@
 
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Header from "./components/Header";
 import Products from "./components/Products";
 import ProductDetails from "./pages/ProductDetails";
 import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
+import Login from "./pages/Login";
+import MinhaConta from "./pages/MinhaConta";
+import { useAuth } from "./context/AuthContext";
 import "./App.css";
 
 function Home() {
@@ -13,9 +16,7 @@ function Home() {
       <main>
         <section className="hero">
           <div className="hero-content">
-            <span className="hero-label">
-              ILUME TECH STORE
-            </span>
+            <span className="hero-label">ILUME TECH STORE</span>
 
             <h1>
               Tecnologia.
@@ -77,7 +78,6 @@ function Home() {
         <section className="featured">
           <span>CURADORIA ILUME</span>
           <h2>Tecnologia escolhida com cuidado.</h2>
-
           <p>
             Estamos preparando nossa seleção de produtos
             para oferecer uma experiência de compra completa.
@@ -92,6 +92,24 @@ function Home() {
       </footer>
     </>
   );
+}
+
+function ProtectedAccount() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <main className="account-page">
+        <p>Carregando sua conta...</p>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <MinhaConta />;
 }
 
 function NotFound() {
@@ -114,6 +132,8 @@ function App() {
 
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/minha-conta" element={<ProtectedAccount />} />
         <Route path="/produto/:slug" element={<ProductDetails />} />
         <Route path="/carrinho" element={<Cart />} />
         <Route path="/checkout" element={<Checkout />} />

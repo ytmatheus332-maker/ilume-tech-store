@@ -1,0 +1,109 @@
+
+.account-page {
+  min-height: calc(100vh - 76px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px;
+  background: #ffffff;
+}
+
+.account-card {
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.account-eyebrow {
+  display: block;
+  margin-bottom: 14px;
+  color: #888888;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  text-align: center;
+}
+
+.account-card h1 {
+  margin-bottom: 12px;
+  color: #171717;
+  font-size: clamp(30px, 5vw, 40px);
+  font-weight: 600;
+  letter-spacing: -1.8px;
+  text-align: center;
+}
+
+.account-description {
+  margin-bottom: 38px;
+  color: #777777;
+  font-size: 14px;
+  text-align: center;
+}
+
+.account-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 30px;
+  border-top: 1px solid #eeeeee;
+}
+
+.account-info div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 4px;
+  border-bottom: 1px solid #eeeeee;
+}
+
+.account-info span {
+  color: #888888;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.account-info strong {
+  color: #171717;
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.account-shop-button,
+.account-logout-button {
+  width: 100%;
+  min-height: 52px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: 0.2s ease;
+}
+
+.account-shop-button {
+  border: 1px solid #171717;
+  background: #171717;
+  color: #ffffff;
+}
+
+.account-shop-button:hover {
+  background: #333333;
+}
+
+.account-logout-button {
+  margin-top: 12px;
+  border: 1px solid #e5e5e5;
+  background: #ffffff;
+  color: #555555;
+}
+
+.account-logout-button:hover {
+  border-color: #171717;
+  color: #171717;
+}
+
+@media (max-width: 480px) {
+  .account-page {
+    min-height: calc(100vh - 68px);
+    padding: 44px 22px;
+  }
+}

@@ -6,8 +6,10 @@ import {
   ShoppingBag,
   Menu,
   X,
+  UserRound,
 } from "lucide-react";
 import { useCart } from "../context/CartContext";
+import { useAuth } from "../context/AuthContext";
 import "./Header.css";
 
 const navigationLinks = [
@@ -20,6 +22,7 @@ const navigationLinks = [
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { totalItems } = useCart();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   function closeMenu() {
@@ -60,6 +63,14 @@ export default function Header() {
             aria-label="Buscar produtos"
           >
             <Search size={20} />
+          </button>
+
+          <button
+            type="button"
+            aria-label={user ? "Minha conta" : "Entrar na conta"}
+            onClick={() => navigate(user ? "/minha-conta" : "/login")}
+          >
+            <UserRound size={20} />
           </button>
 
           <button

@@ -58,6 +58,38 @@ function formatCEP(value: string) {
     .replace(/^(\d{5})(\d)/, "$1-$2");
 }
 
+function isValidCPF(value: string) {
+  const cpf = value.replace(/\D/g, "");
+
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) {
+    return false;
+  }
+
+  let sum = 0;
+
+  for (let i = 0; i < 9; i++) {
+    sum += Number(cpf[i]) * (10 - i);
+  }
+
+  let remainder = (sum * 10) % 11;
+  const firstDigit = remainder === 10 ? 0 : remainder;
+
+  if (firstDigit !== Number(cpf[9])) {
+    return false;
+  }
+
+  sum = 0;
+
+  for (let i = 0; i < 10; i++) {
+    sum += Number(cpf[i]) * (11 - i);
+  }
+
+  remainder = (sum * 10) % 11;
+  const secondDigit = remainder === 10 ? 0 : remainder;
+
+  return secondDigit === Number(cpf[10]);
+}
+
 export default function Checkout() {
   const { items, subtotal } = useCart();
 
@@ -122,6 +154,11 @@ export default function Checkout() {
   async function handleCepBlur() {
     const cep = address.cep.replace(/\D/g, "");
 
+    if (!cep) {
+      setCepStatus("");
+      return;
+    }
+
     if (cep.length !== 8) {
       setCepStatus("Digite um CEP válido com 8 números.");
       return;
@@ -168,13 +205,26 @@ export default function Checkout() {
     const phoneDigits = customer.phone.replace(/\D/g, "");
     const cepDigits = address.cep.replace(/\D/g, "");
 
-    if (cpfDigits.length !== 11) {
-      alert("Confira o CPF informado.");
+    if (customer.name.trim().length < 3) {
+      alert("Informe seu nome completo.");
       return;
     }
 
-    if (phoneDigits.length < 10) {
-      alert("Confira o telefone informado.");
+    if (!isValidCPF(cpfDigits)) {
+      alert("O CPF informado é inválido. Confira os números.");
+      return;
+    }
+
+    if (
+      phoneDigits.length !== 10 &&
+      phoneDigits.length !== 11
+    ) {
+      alert("Informe um telefone válido com DDD.");
+      return;
+    }
+
+    if (/^(\d)\1+$/.test(phoneDigits)) {
+      alert("O telefone informado não parece ser válido.");
       return;
     }
 
@@ -183,8 +233,23 @@ export default function Checkout() {
       return;
     }
 
+    if (
+      !address.street.trim() ||
+      !address.number.trim() ||
+      !address.neighborhood.trim() ||
+      !address.city.trim()
+    ) {
+      alert("Preencha todos os campos obrigatórios do endereço.");
+      return;
+    }
+
+    if (!/^[A-Z]{2}$/.test(address.state)) {
+      alert("Informe uma sigla de estado válida, com duas letras.");
+      return;
+    }
+
     alert(
-      "Dados preenchidos com sucesso. A integração de entrega e pagamento será implementada na próxima etapa."
+      "Dados validados com sucesso! A integração de entrega e pagamento será implementada na próxima etapa."
     );
   }
 
@@ -307,6 +372,7 @@ export default function Checkout() {
                     autoComplete="postal-code"
                     required
                   />
+
                   {cepStatus && (
                     <span
                       role="status"
