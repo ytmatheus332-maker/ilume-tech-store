@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -14,15 +13,17 @@ import {
   Barcode,
   ShieldCheck,
   Info,
+  CheckCircle2,
+  MapPin,
+  UserRound,
+  ReceiptText,
 } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import "./Checkout.css";
-
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
 });
-
 interface ViaCepResponse {
   cep: string;
   logradouro: string;
@@ -31,7 +32,6 @@ interface ViaCepResponse {
   uf: string;
   erro?: boolean;
 }
-
 interface ShippingOption {
   id: string;
   name: string;
@@ -39,13 +39,11 @@ interface ShippingOption {
   estimatedDays: string;
   price: number;
 }
-
 interface PaymentOption {
   id: string;
   name: string;
   description: string;
 }
-
 const shippingOptions: ShippingOption[] = [
   {
     id: "pac",
@@ -62,7 +60,6 @@ const shippingOptions: ShippingOption[] = [
     price: 29.9,
   },
 ];
-
 const paymentOptions: PaymentOption[] = [
   {
     id: "pix",
@@ -80,7 +77,6 @@ const paymentOptions: PaymentOption[] = [
     description: "Pagamento por boleto bancário.",
   },
 ];
-
 function formatCPF(value: string) {
   return value
     .replace(/\D/g, "")
@@ -89,42 +85,33 @@ function formatCPF(value: string) {
     .replace(/(\d{3})(\d)/, "$1.$2")
     .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
 }
-
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 11);
-
   if (digits.length <= 2) {
     return digits.replace(/^(\d{0,2})/, "($1");
   }
-
   if (digits.length <= 6) {
     return digits.replace(/^(\d{2})(\d+)/, "($1) $2");
   }
-
   if (digits.length <= 10) {
     return digits.replace(/^(\d{2})(\d{4})(\d+)/, "($1) $2-$3");
   }
-
   return digits.replace(/^(\d{2})(\d{5})(\d+)/, "($1) $2-$3");
 }
-
 function formatCEP(value: string) {
   return value
     .replace(/\D/g, "")
     .slice(0, 8)
     .replace(/^(\d{5})(\d)/, "$1-$2");
 }
-
 export default function Checkout() {
   const { items, subtotal } = useCart();
-
   const [customer, setCustomer] = useState({
     name: "",
     email: "",
     cpf: "",
     phone: "",
   });
-
   const [address, setAddress] = useState({
     cep: "",
     street: "",
@@ -134,88 +121,68 @@ export default function Checkout() {
     city: "",
     state: "",
   });
-
   const [cepStatus, setCepStatus] = useState("");
   const [selectedShipping, setSelectedShipping] = useState("pac");
   const [showPayment, setShowPayment] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState("pix");
-
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [orderNumber, setOrderNumber] = useState("");
   const selectedShippingOption = shippingOptions.find(
     (option) => option.id === selectedShipping
   );
-
   const selectedPaymentOption = paymentOptions.find(
     (option) => option.id === selectedPayment
   );
-
   const shippingPrice = selectedShippingOption?.price ?? 0;
   const total = subtotal + shippingPrice;
-
   function handleCustomerChange(event: ChangeEvent<HTMLInputElement>) {
     const { name, value } = event.target;
-
     let formattedValue = value;
-
     if (name === "cpf") {
       formattedValue = formatCPF(value);
     }
-
     if (name === "phone") {
       formattedValue = formatPhone(value);
     }
-
     setCustomer((current) => ({
       ...current,
       [name]: formattedValue,
     }));
   }
-
   function handleAddressChange(event: ChangeEvent<HTMLInputElement>) {
     const { name, value } = event.target;
-
     let formattedValue = value;
-
     if (name === "cep") {
       formattedValue = formatCEP(value);
       setCepStatus("");
     }
-
     if (name === "state") {
       formattedValue = value.toUpperCase().slice(0, 2);
     }
-
     setAddress((current) => ({
       ...current,
       [name]: formattedValue,
     }));
   }
-
   async function handleCepBlur() {
     const cep = address.cep.replace(/\D/g, "");
-
     if (cep.length !== 8) {
       setCepStatus("Digite um CEP válido com 8 números.");
       return;
     }
-
     setCepStatus("Consultando endereço...");
-
     try {
       const response = await fetch(
         `https://viacep.com.br/ws/${cep}/json/`
       );
-
       if (!response.ok) {
         throw new Error("Falha na consulta.");
       }
-
       const data: ViaCepResponse = await response.json();
-
       if (data.erro) {
         setCepStatus("CEP não encontrado. Confira os números.");
         return;
       }
-
       setAddress((current) => ({
         ...current,
         street: data.logradouro || current.street,
@@ -223,7 +190,6 @@ export default function Checkout() {
         city: data.localidade || current.city,
         state: data.uf || current.state,
       }));
-
       setCepStatus("Endereço encontrado e preenchido.");
     } catch {
       setCepStatus(
@@ -231,37 +197,39 @@ export default function Checkout() {
       );
     }
   }
-
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     const cpfDigits = customer.cpf.replace(/\D/g, "");
     const phoneDigits = customer.phone.replace(/\D/g, "");
     const cepDigits = address.cep.replace(/\D/g, "");
-
     if (cpfDigits.length !== 11) {
       alert("Confira o CPF informado.");
       return;
     }
-
     if (phoneDigits.length < 10) {
       alert("Confira o telefone informado.");
       return;
     }
-
     if (cepDigits.length !== 8) {
       alert("Confira o CEP informado.");
       return;
     }
-
     if (!selectedShippingOption) {
       alert("Selecione uma modalidade de entrega.");
       return;
     }
-
     setShowPayment(true);
   }
-
+  function handleConfirmOrder() {
+    if (!selectedPaymentOption || !selectedShippingOption) {
+      alert("Confira a forma de pagamento e de entrega.");
+      return;
+    }
+    const generatedNumber = `ILU-${Date.now().toString().slice(-8)}`;
+    setOrderNumber(generatedNumber);
+    setShowConfirmation(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
   if (items.length === 0) {
     return (
       <main className="checkout-empty">
@@ -272,7 +240,120 @@ export default function Checkout() {
       </main>
     );
   }
-
+  if (showConfirmation) {
+    return (
+      <main className="checkout-page">
+        <div className="checkout-container">
+          <div className="checkout-confirmation">
+            <div className="checkout-confirmation-icon">
+              <CheckCircle2 size={48} />
+            </div>
+            <span className="checkout-confirmation-brand">
+              ILUME TECH STORE
+            </span>
+            <h1>Pedido preparado!</h1>
+            <p className="checkout-confirmation-description">
+              Seus dados foram conferidos e seu pedido está pronto para a
+              próxima etapa de pagamento.
+            </p>
+            <div className="checkout-order-number">
+              <span>NÚMERO DEMONSTRATIVO DO PEDIDO</span>
+              <strong>{orderNumber}</strong>
+            </div>
+            <div className="checkout-confirmation-status">
+              <Info size={18} />
+              <div>
+                <strong>Aguardando integração de pagamento</strong>
+                <p>
+                  Nenhum pagamento foi realizado e este pedido ainda não foi
+                  registrado no sistema da loja.
+                </p>
+              </div>
+            </div>
+            <div className="checkout-confirmation-card">
+              <div className="checkout-confirmation-heading">
+                <ReceiptText size={19} />
+                <h2>Resumo da compra</h2>
+              </div>
+              {items.map((item) => (
+                <div className="checkout-product" key={item.id}>
+                  <img src={item.image} alt={item.name} />
+                  <div>
+                    <strong>{item.name}</strong>
+                    <span>Quantidade: {item.quantity}</span>
+                  </div>
+                  <strong>
+                    {currencyFormatter.format(item.price * item.quantity)}
+                  </strong>
+                </div>
+              ))}
+              <div className="checkout-confirmation-total">
+                <span>Subtotal</span>
+                <strong>{currencyFormatter.format(subtotal)}</strong>
+              </div>
+              <div className="checkout-confirmation-total">
+                <span>Entrega — {selectedShippingOption?.name}</span>
+                <strong>{currencyFormatter.format(shippingPrice)}</strong>
+              </div>
+              <div className="checkout-grand-total">
+                <span>Total do pedido</span>
+                <strong>{currencyFormatter.format(total)}</strong>
+              </div>
+            </div>
+            <div className="checkout-confirmation-card">
+              <div className="checkout-confirmation-heading">
+                <UserRound size={19} />
+                <h2>Dados do cliente</h2>
+              </div>
+              <p><strong>{customer.name}</strong></p>
+              <p>{customer.email}</p>
+              <p>{customer.phone}</p>
+              <p>CPF: {customer.cpf}</p>
+            </div>
+            <div className="checkout-confirmation-card">
+              <div className="checkout-confirmation-heading">
+                <MapPin size={19} />
+                <h2>Endereço de entrega</h2>
+              </div>
+              <p>
+                {address.street}, {address.number}
+                {address.complement ? ` — ${address.complement}` : ""}
+              </p>
+              <p>{address.neighborhood}</p>
+              <p>
+                {address.city} — {address.state}
+              </p>
+              <p>CEP: {address.cep}</p>
+            </div>
+            <div className="checkout-confirmation-card">
+              <div className="checkout-confirmation-heading">
+                <Truck size={19} />
+                <h2>Entrega e pagamento</h2>
+              </div>
+              <p>
+                <strong>{selectedShippingOption?.name}</strong> —{" "}
+                {selectedShippingOption?.description}
+              </p>
+              <p>
+                Prazo ilustrativo: {selectedShippingOption?.estimatedDays}
+              </p>
+              <p>
+                Pagamento: <strong>{selectedPaymentOption?.name}</strong>
+              </p>
+            </div>
+            <p className="checkout-confirmation-disclaimer">
+              Esta é uma confirmação demonstrativa. Os valores e prazos de
+              entrega são ilustrativos. A compra real estará disponível após
+              a integração dos serviços de pagamento e frete.
+            </p>
+            <Link to="/" className="checkout-confirmation-button">
+              Voltar para a loja
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
   return (
     <main className="checkout-page">
       <div className="checkout-container">
@@ -280,13 +361,11 @@ export default function Checkout() {
           <ArrowLeft size={16} />
           Voltar ao carrinho
         </Link>
-
         <div className="checkout-heading">
           <span>ILUME TECH STORE</span>
           <h1>Finalizar compra.</h1>
           <p>Preencha seus dados para continuar.</p>
         </div>
-
         <div className="checkout-layout">
           <form className="checkout-form" onSubmit={handleSubmit}>
             <section className="checkout-section">
@@ -297,7 +376,6 @@ export default function Checkout() {
                   <p>Informações para identificar seu pedido.</p>
                 </div>
               </div>
-
               <div className="checkout-fields">
                 <label className="checkout-field checkout-field-full">
                   Nome completo
@@ -311,7 +389,6 @@ export default function Checkout() {
                     required
                   />
                 </label>
-
                 <label className="checkout-field">
                   E-mail
                   <input
@@ -324,7 +401,6 @@ export default function Checkout() {
                     required
                   />
                 </label>
-
                 <label className="checkout-field">
                   CPF
                   <input
@@ -339,7 +415,6 @@ export default function Checkout() {
                     required
                   />
                 </label>
-
                 <label className="checkout-field checkout-field-full">
                   Telefone / WhatsApp
                   <input
@@ -356,7 +431,6 @@ export default function Checkout() {
                 </label>
               </div>
             </section>
-
             <section className="checkout-section">
               <div className="checkout-section-heading">
                 <span>02</span>
@@ -365,7 +439,6 @@ export default function Checkout() {
                   <p>Onde você deseja receber seu pedido?</p>
                 </div>
               </div>
-
               <div className="checkout-fields">
                 <label className="checkout-field">
                   CEP
@@ -381,7 +454,6 @@ export default function Checkout() {
                     autoComplete="postal-code"
                     required
                   />
-
                   {cepStatus && (
                     <span
                       role="status"
@@ -397,7 +469,6 @@ export default function Checkout() {
                     </span>
                   )}
                 </label>
-
                 <label className="checkout-field checkout-field-full">
                   Endereço
                   <input
@@ -410,7 +481,6 @@ export default function Checkout() {
                     required
                   />
                 </label>
-
                 <label className="checkout-field">
                   Número
                   <input
@@ -422,7 +492,6 @@ export default function Checkout() {
                     required
                   />
                 </label>
-
                 <label className="checkout-field">
                   Complemento
                   <input
@@ -433,7 +502,6 @@ export default function Checkout() {
                     placeholder="Apartamento, bloco..."
                   />
                 </label>
-
                 <label className="checkout-field">
                   Bairro
                   <input
@@ -445,7 +513,6 @@ export default function Checkout() {
                     required
                   />
                 </label>
-
                 <label className="checkout-field">
                   Cidade
                   <input
@@ -458,7 +525,6 @@ export default function Checkout() {
                     required
                   />
                 </label>
-
                 <label className="checkout-field">
                   Estado
                   <input
@@ -474,7 +540,6 @@ export default function Checkout() {
                 </label>
               </div>
             </section>
-
             <section className="checkout-section">
               <div className="checkout-section-heading">
                 <span>03</span>
@@ -483,7 +548,6 @@ export default function Checkout() {
                   <p>Escolha como deseja receber seu pedido.</p>
                 </div>
               </div>
-
               <div className="checkout-shipping-options">
                 {shippingOptions.map((option) => (
                   <label
@@ -501,13 +565,10 @@ export default function Checkout() {
                       checked={selectedShipping === option.id}
                       onChange={() => setSelectedShipping(option.id)}
                     />
-
                     <span className="checkout-shipping-radio" />
-
                     <span className="checkout-shipping-icon">
                       <Truck size={22} />
                     </span>
-
                     <span className="checkout-shipping-info">
                       <strong>{option.name}</strong>
                       <span>{option.description}</span>
@@ -516,14 +577,12 @@ export default function Checkout() {
                         {option.estimatedDays}
                       </small>
                     </span>
-
                     <strong className="checkout-shipping-price">
                       {currencyFormatter.format(option.price)}
                     </strong>
                   </label>
                 ))}
               </div>
-
               <div className="checkout-shipping-notice">
                 <PackageCheck size={16} />
                 <p>
@@ -532,7 +591,6 @@ export default function Checkout() {
                 </p>
               </div>
             </section>
-
             {showPayment && (
               <section className="checkout-section checkout-payment-section">
                 <div className="checkout-section-heading">
@@ -542,11 +600,9 @@ export default function Checkout() {
                     <p>Escolha como deseja pagar seu pedido.</p>
                   </div>
                 </div>
-
                 <div className="checkout-payment-options">
                   {paymentOptions.map((option) => {
                     const isSelected = selectedPayment === option.id;
-
                     return (
                       <label
                         key={option.id}
@@ -563,15 +619,12 @@ export default function Checkout() {
                           checked={isSelected}
                           onChange={() => setSelectedPayment(option.id)}
                         />
-
                         <span className="checkout-shipping-radio" />
-
                         <span className="checkout-payment-icon">
                           {option.id === "pix" && <QrCode size={23} />}
                           {option.id === "card" && <CreditCard size={23} />}
                           {option.id === "boleto" && <Barcode size={23} />}
                         </span>
-
                         <span className="checkout-payment-info">
                           <strong>{option.name}</strong>
                           <small>{option.description}</small>
@@ -580,7 +633,6 @@ export default function Checkout() {
                     );
                   })}
                 </div>
-
                 <div className="checkout-payment-notice">
                   <Info size={17} />
                   <div>
@@ -594,28 +646,24 @@ export default function Checkout() {
                     </p>
                   </div>
                 </div>
-
                 <div className="checkout-payment-security">
                   <ShieldCheck size={18} />
                   <span>Pagamento protegido após a integração oficial.</span>
                 </div>
-
                 <button
                   type="button"
                   className="checkout-submit"
-                  disabled
+                  onClick={handleConfirmOrder}
                 >
-                  Pagamento em breve
+                  Finalizar pedido
                 </button>
               </section>
             )}
-
             {!showPayment && (
               <>
                 <button type="submit" className="checkout-submit">
                   Continuar para pagamento
                 </button>
-
                 <p className="checkout-security">
                   <LockKeyhole size={14} />
                   Seus dados devem ser protegidos durante todo o processo.
@@ -623,43 +671,35 @@ export default function Checkout() {
               </>
             )}
           </form>
-
           <aside className="checkout-summary">
             <span>SEU PEDIDO</span>
             <h2>Resumo da compra.</h2>
-
             <div className="checkout-products">
               {items.map((item) => (
                 <div className="checkout-product" key={item.id}>
                   <img src={item.image} alt={item.name} />
-
                   <div>
                     <strong>{item.name}</strong>
                     <span>Quantidade: {item.quantity}</span>
                   </div>
-
                   <strong>
                     {currencyFormatter.format(item.price * item.quantity)}
                   </strong>
                 </div>
               ))}
             </div>
-
             <div className="checkout-total">
               <span>Subtotal</span>
               <strong>{currencyFormatter.format(subtotal)}</strong>
             </div>
-
             <div className="checkout-total checkout-shipping-total">
               <span>Entrega ({selectedShippingOption?.name ?? "—"})</span>
               <strong>{currencyFormatter.format(shippingPrice)}</strong>
             </div>
-
             <div className="checkout-grand-total">
               <span>Total do pedido</span>
               <strong>{currencyFormatter.format(total)}</strong>
             </div>
-
             <p>
               Frete demonstrativo. O valor definitivo será calculado na
               integração de entrega.
