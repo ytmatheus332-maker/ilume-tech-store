@@ -1,4 +1,5 @@
 
+import { useLocation } from "react-router-dom";
 import "./Products.css";
 
 interface Product {
@@ -54,13 +55,28 @@ const products: Product[] = [
 ];
 
 export default function Products() {
+  const location = useLocation();
+  const isIPhonesPage = location.pathname === "/iphones";
+
   return (
     <section className="products" id="produtos">
       <div className="products-heading">
         <div>
-          <span>SELEÇÃO ILUME</span>
-          <h2>Produtos em destaque.</h2>
-          <p>Conheça nossa seleção de tecnologia.</p>
+          <span>
+            {isIPhonesPage ? "ILUME COLLECTION" : "SELEÇÃO ILUME"}
+          </span>
+
+          <h2>
+            {isIPhonesPage
+              ? "Conheça nossa linha de iPhones."
+              : "Produtos em destaque."}
+          </h2>
+
+          <p>
+            {isIPhonesPage
+              ? "Explore os modelos selecionados pela ILUME TECH STORE."
+              : "Conheça nossa seleção de tecnologia."}
+          </p>
         </div>
 
         <div className="products-anniversary">
