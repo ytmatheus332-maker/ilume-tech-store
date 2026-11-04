@@ -158,7 +158,7 @@ main {
 }
 
 /* =====================================
-   CATEGORIAS
+   EXPLORAR — ILUME EDITORIAL
 ===================================== */
 
 .categories {
@@ -168,106 +168,126 @@ main {
 }
 
 .section-heading {
-  margin-bottom: 32px;
+  margin-bottom: 30px;
 }
 
 .section-heading span {
   display: block;
-  color: #888;
+  color: #999;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 2px;
+  letter-spacing: 2.8px;
 }
 
 .section-heading h2 {
-  margin-top: 11px;
+  margin-top: 12px;
   color: #171717;
-  font-size: 31px;
+  font-size: clamp(28px, 3vw, 36px);
   font-weight: 600;
-  letter-spacing: -1.2px;
+  letter-spacing: -1.5px;
+  line-height: 1.15;
 }
 
 .category-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
+  gap: 0;
+  border-top: 1px solid #e8e8e8;
+  border-bottom: 1px solid #e8e8e8;
 }
 
 .category-card {
   position: relative;
   display: flex;
-  min-height: 180px;
+  min-height: 170px;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: space-between;
   overflow: hidden;
-  padding: 27px;
-  border: 1px solid #eaeaea;
-  border-radius: 16px;
-  background: linear-gradient(145deg, #fafafa, #f1f1f3);
-  transition:
-    transform .3s ease,
-    background .3s ease,
-    border-color .3s ease,
-    box-shadow .3s ease;
-}
-
-/* SETA MINIMALISTA */
-
-.category-card::after {
-  position: absolute;
-  top: 22px;
-  right: 24px;
-  width: 34px;
-  height: 34px;
-  border: 1px solid #dedede;
-  border-radius: 50%;
-  content: "↗︎";
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #555;
-  font-family: Arial, sans-serif;
-  font-size: 17px;
-  font-weight: 400;
-  line-height: 1;
-  -webkit-appearance: none;
-  appearance: none;
-  transition: all .3s ease;
-}
-
-.category-card:hover {
-  transform: translateY(-5px);
-  border-color: #d8d8d8;
+  padding: 25px 26px;
+  border: 0;
+  border-right: 1px solid #e8e8e8;
+  border-radius: 0;
   background: #fff;
-  box-shadow: 0 14px 35px rgba(0,0,0,.05);
+  text-decoration: none;
+  transition:
+    background .3s ease,
+    padding .3s ease;
 }
 
-.category-card:hover::after {
-  background: #171717;
-  border-color: #171717;
-  color: #fff;
+.category-card:last-child {
+  border-right: 0;
 }
+
+/* NUMERAÇÃO */
 
 .category-card > span {
-  margin-bottom: auto;
-  color: #999;
+  display: block;
+  margin-bottom: 20px;
+  color: #aaa;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 1.5px;
+  letter-spacing: 2px;
 }
+
+/* TÍTULOS */
 
 .category-card h3 {
   color: #171717;
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 600;
-  letter-spacing: -.4px;
+  letter-spacing: -.6px;
+  transition: transform .3s ease;
 }
 
+/* DESCRIÇÃO */
+
 .category-card p {
-  margin-top: 8px;
+  margin-top: 7px;
   color: #888;
   font-size: 12px;
   line-height: 1.6;
+  transition: color .3s ease;
+}
+
+/* SETA */
+
+.category-card::after {
+  position: absolute;
+  top: 23px;
+  right: 24px;
+  display: flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e5e5e5;
+  border-radius: 50%;
+  color: #555;
+  content: "↗";
+  font-family: Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  transition: all .3s ease;
+}
+
+/* INTERAÇÃO */
+
+.category-card:hover {
+  background: #f8f8f8;
+}
+
+.category-card:hover h3 {
+  transform: translateX(3px);
+}
+
+.category-card:hover p {
+  color: #555;
+}
+
+.category-card:hover::after {
+  border-color: #171717;
+  background: #171717;
+  color: #fff;
 }
 
 /* =====================================
@@ -430,12 +450,12 @@ main {
     width: calc(100% - 48px);
   }
 
-  .category-grid {
-    gap: 14px;
+  .category-card {
+    padding: 22px 18px;
   }
 
-  .category-card {
-    padding: 22px;
+  .category-card h3 {
+    font-size: 18px;
   }
 }
 
@@ -491,23 +511,97 @@ main {
     letter-spacing: 9px;
   }
 
+  /* EXPLORAR */
+
   .categories {
     width: calc(100% - 40px);
-    margin-top: 60px;
+    margin-top: 55px;
+  }
+
+  .section-heading {
+    margin-bottom: 23px;
+  }
+
+  .section-heading span {
+    font-size: 9px;
+    letter-spacing: 2.5px;
   }
 
   .section-heading h2 {
-    font-size: 26px;
+    max-width: 340px;
+    margin-top: 10px;
+    font-size: 29px;
+    letter-spacing: -1.3px;
+    line-height: 1.15;
   }
 
   .category-grid {
     grid-template-columns: 1fr;
-    gap: 12px;
+    border-top: 1px solid #e8e8e8;
   }
 
   .category-card {
-    min-height: 145px;
-    padding: 22px;
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 13px;
+    align-items: center;
+    min-height: 91px;
+    padding: 17px 8px;
+    border-right: 0;
+    border-bottom: 1px solid #e8e8e8;
+    background: #fff;
+  }
+
+  .category-card:last-child {
+    border-bottom: 0;
+  }
+
+  .category-card > span {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    align-self: center;
+    margin: 0;
+    color: #aaa;
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  .category-card h3 {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: end;
+    padding-right: 42px;
+    font-size: 17px;
+    letter-spacing: -.4px;
+  }
+
+  .category-card p {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+    margin-top: 4px;
+    padding-right: 42px;
+    color: #888;
+    font-size: 11px;
+  }
+
+  .category-card::after {
+    top: 50%;
+    right: 5px;
+    width: 31px;
+    height: 31px;
+    transform: translateY(-50%);
+    font-size: 15px;
+  }
+
+  .category-card:hover {
+    padding-left: 12px;
+    background: #fafafa;
+  }
+
+  .category-card:hover::after {
+    transform: translateY(-50%);
   }
 
   .featured {
@@ -534,7 +628,9 @@ main {
   }
 }
 
-/* TELAS MUITO PEQUENAS */
+/* =====================================
+   TELAS MUITO PEQUENAS
+===================================== */
 
 @media (max-width: 360px) {
   .hero {
@@ -561,6 +657,11 @@ main {
   }
 
   .category-card {
-    min-height: 135px;
+    min-height: 85px;
+    padding: 15px 5px;
+  }
+
+  .category-card h3 {
+    font-size: 16px;
   }
 }
