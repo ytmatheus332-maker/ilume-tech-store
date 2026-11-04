@@ -8,6 +8,7 @@ import {
   Truck,
   Check,
 } from "lucide-react";
+
 import { useCart } from "../context/CartContext";
 import "./ProductDetails.css";
 
@@ -57,7 +58,7 @@ const currencyFormatter = new Intl.NumberFormat("pt-BR", {
 });
 
 export default function ProductDetails() {
-  const { slug } = useParams();
+  const { slug } = useParams<{ slug: string }>();
   const { addToCart } = useCart();
 
   const [quantity, setQuantity] = useState(1);
@@ -65,11 +66,12 @@ export default function ProductDetails() {
 
   const product = products.find((item) => item.slug === slug);
 
-  if (!product) {
+  if (product === undefined) {
     return (
       <main className="product-not-found">
         <span>ILUME TECH STORE</span>
         <h1>Produto não encontrado.</h1>
+
         <Link to="/" className="product-back-link">
           Voltar para a loja
         </Link>
@@ -77,20 +79,23 @@ export default function ProductDetails() {
     );
   }
 
-  function handleAddToCart() {
+  // A cópia fica disponível para a função do carrinho.
+  const selectedProduct = product as Product;
+
+  const handleAddToCart = () => {
     addToCart(
       {
-        id: product.id,
-        slug: product.slug,
-        name: product.name,
-        price: product.price,
-        image: product.image,
+        id: selectedProduct.id,
+        slug: selectedProduct.slug,
+        name: selectedProduct.name,
+        price: selectedProduct.price,
+        image: selectedProduct.image,
       },
       quantity
     );
 
     setAdded(true);
-  }
+  };
 
   return (
     <main className="product-details">
@@ -101,8 +106,12 @@ export default function ProductDetails() {
 
       <section className="product-details-layout">
         <div className="product-details-image">
-          <span>{product.label}</span>
-          <img src={product.image} alt={product.name} />
+          <span>{selectedProduct.label}</span>
+
+          <img
+            src={selectedProduct.image}
+            alt={selectedProduct.name}
+          />
         </div>
 
         <div className="product-details-info">
@@ -110,14 +119,14 @@ export default function ProductDetails() {
             ILUME SELECTION
           </span>
 
-          <h1>{product.name}</h1>
+          <h1>{selectedProduct.name}</h1>
 
           <p className="product-details-description">
-            {product.description}
+            {selectedProduct.description}
           </p>
 
           <strong className="product-details-price">
-            {currencyFormatter.format(product.price)}
+            {currencyFormatter.format(selectedProduct.price)}
           </strong>
 
           <p className="product-details-installment">
@@ -158,7 +167,10 @@ export default function ProductDetails() {
             onClick={handleAddToCart}
           >
             {added ? <Check size={18} /> : <ShoppingBag size={18} />}
-            {added ? "Adicionado ao carrinho" : "Adicionar ao carrinho"}
+
+            {added
+              ? "Adicionado ao carrinho"
+              : "Adicionar ao carrinho"}
           </button>
 
           <div className="product-benefits">
