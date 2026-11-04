@@ -68,7 +68,7 @@ const paymentOptions: PaymentOption[] = [
   },
   {
     id: "card",
-    name: "Cartão de cr�rdito",
+    name: "Cartão de crédito",
     description: "Pagamento com cartão e possibilidade de parcelamento.",
   },
   {
@@ -363,7 +363,7 @@ export default function Checkout() {
                 <strong>{currencyFormatter.format(subtotal)}</strong>
               </div>
               <div className="checkout-confirmation-total">
-                <span>Entrega ��� {selectedShippingOption?.name}</span>
+                <span>Entrega — {selectedShippingOption?.name}</span>
                 <strong>{currencyFormatter.format(shippingPrice)}</strong>
               </div>
               <div className="checkout-grand-total">
@@ -388,11 +388,11 @@ export default function Checkout() {
               </div>
               <p>
                 {address.street}, {address.number}
-                {address.complement ? ` ��� ${address.complement}` : ""}
+                {address.complement ? ` — ${address.complement}` : ""}
               </p>
               <p>{address.neighborhood}</p>
               <p>
-                {address.city} ��� {address.state}
+                {address.city} — {address.state}
               </p>
               <p>CEP: {address.cep}</p>
             </div>
@@ -402,7 +402,7 @@ export default function Checkout() {
                 <h2>Entrega e pagamento</h2>
               </div>
               <p>
-                <strong>{selectedShippingOption?.name}</strong> ���{" "}
+                <strong>{selectedShippingOption?.name}</strong> —{" "}
                 {selectedShippingOption?.description}
               </p>
               <p>
@@ -413,7 +413,7 @@ export default function Checkout() {
               </p>
             </div>
             <p className="checkout-confirmation-disclaimer">
-              Esta �r uma confirmação demonstrativa. Os valores e prazos de
+              Esta é uma confirmação demonstrativa. Os valores e prazos de
               entrega são ilustrativos. A compra real estará disponível após
               a integração dos serviços de pagamento e frete.
             </p>
@@ -444,7 +444,7 @@ export default function Checkout() {
                 <span>01</span>
                 <div>
                   <h2>Dados pessoais</h2>
-                  <p>Informaç�Aes para identificar seu pedido.</p>
+                  <p>Informações para identificar seu pedido.</p>
                 </div>
               </div>
               <div className="checkout-fields">
@@ -764,7 +764,7 @@ export default function Checkout() {
               <strong>{currencyFormatter.format(subtotal)}</strong>
             </div>
             <div className="checkout-total checkout-shipping-total">
-              <span>Entrega ({selectedShippingOption?.name ?? "���"})</span>
+              <span>Entrega ({selectedShippingOption?.name ?? "—"})</span>
               <strong>{currencyFormatter.format(shippingPrice)}</strong>
             </div>
             <div className="checkout-grand-total">
