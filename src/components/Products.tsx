@@ -65,13 +65,11 @@ export default function Products() {
 
         <div className="products-anniversary">
           <span className="anniversary-number">10</span>
+
           <div>
             <strong>ANOS</strong>
-            <span>NO MERCADO</span>
+            <span>DE MERCADO</span>
           </div>
-          <span className="anniversary-icon" aria-hidden="true">
-            ★
-          </span>
         </div>
       </div>
 
@@ -96,7 +94,7 @@ export default function Products() {
 
               <div
                 className="product-rating"
-                aria-label={`Avaliação demonstrativa de ${product.rating} de 5 estrelas`}
+                aria-label={`${product.rating} de 5 estrelas`}
               >
                 <span className="product-stars" aria-hidden="true">
                   {"★".repeat(product.rating)}
@@ -108,10 +106,6 @@ export default function Products() {
               </div>
 
               <div className="product-review">
-                <span className="review-demo-label">
-                  COMENTÁRIO DEMONSTRATIVO
-                </span>
-
                 <p>"{product.review}"</p>
               </div>
 
