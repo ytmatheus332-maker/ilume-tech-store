@@ -47,11 +47,9 @@ function Home() {
           </div>
         </section>
 
-        {/* EXPLORAR ILUME */}
-
         <section className="categories">
           <div className="section-heading">
-            <span>EXPLORE A ILUME</span>
+            <span>EXPLORE ILUME</span>
             <h2>Explore o universo ILUME.</h2>
           </div>
 
@@ -64,9 +62,7 @@ function Home() {
                 <p>Tecnologia e desempenho.</p>
               </div>
 
-              <span className="category-arrow" aria-hidden="true">
-                ↗
-              </span>
+              <span className="category-arrow">↗</span>
             </a>
 
             <a href="/acessorios" className="category-card">
@@ -77,9 +73,7 @@ function Home() {
                 <p>Detalhes que fazem diferença.</p>
               </div>
 
-              <span className="category-arrow" aria-hidden="true">
-                ↗
-              </span>
+              <span className="category-arrow">↗</span>
             </a>
 
             <a href="/radar-tech" className="category-card">
@@ -90,9 +84,7 @@ function Home() {
                 <p>Informação para acompanhar o futuro.</p>
               </div>
 
-              <span className="category-arrow" aria-hidden="true">
-                ↗
-              </span>
+              <span className="category-arrow">↗</span>
             </a>
           </div>
         </section>
