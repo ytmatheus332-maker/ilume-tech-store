@@ -6,6 +6,9 @@ import {
   ArrowLeft,
   LockKeyhole,
   ShoppingBag,
+  Truck,
+  Clock3,
+  PackageCheck,
 } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import "./Checkout.css";
@@ -23,6 +26,31 @@ interface ViaCepResponse {
   uf: string;
   erro?: boolean;
 }
+
+interface ShippingOption {
+  id: string;
+  name: string;
+  description: string;
+  estimatedDays: string;
+  price: number;
+}
+
+const shippingOptions: ShippingOption[] = [
+  {
+    id: "pac",
+    name: "PAC",
+    description: "Entrega econômica",
+    estimatedDays: "6 a 9 dias úteis",
+    price: 19.9,
+  },
+  {
+    id: "sedex",
+    name: "SEDEX",
+    description: "Entrega expressa",
+    estimatedDays: "2 a 4 dias úteis",
+    price: 29.9,
+  },
+];
 
 function formatCPF(value: string) {
   return value
@@ -79,6 +107,14 @@ export default function Checkout() {
   });
 
   const [cepStatus, setCepStatus] = useState("");
+  const [selectedShipping, setSelectedShipping] = useState("pac");
+
+  const selectedShippingOption = shippingOptions.find(
+    (option) => option.id === selectedShipping
+  );
+
+  const shippingPrice = selectedShippingOption?.price ?? 0;
+  const total = subtotal + shippingPrice;
 
   function handleCustomerChange(event: ChangeEvent<HTMLInputElement>) {
     const { name, value } = event.target;
@@ -183,8 +219,13 @@ export default function Checkout() {
       return;
     }
 
+    if (!selectedShippingOption) {
+      alert("Selecione uma modalidade de entrega.");
+      return;
+    }
+
     alert(
-      "Dados preenchidos com sucesso. A integração de entrega e pagamento será implementada na próxima etapa."
+      "Dados preenchidos com sucesso! A escolha de entrega é apenas demonstrativa. A integração de frete e pagamento será implementada posteriormente."
     );
   }
 
@@ -307,6 +348,7 @@ export default function Checkout() {
                     autoComplete="postal-code"
                     required
                   />
+
                   {cepStatus && (
                     <span
                       role="status"
@@ -400,6 +442,64 @@ export default function Checkout() {
               </div>
             </section>
 
+            <section className="checkout-section">
+              <div className="checkout-section-heading">
+                <span>03</span>
+                <div>
+                  <h2>Forma de entrega</h2>
+                  <p>Escolha como deseja receber seu pedido.</p>
+                </div>
+              </div>
+
+              <div className="checkout-shipping-options">
+                {shippingOptions.map((option) => (
+                  <label
+                    key={option.id}
+                    className={`checkout-shipping-option ${
+                      selectedShipping === option.id
+                        ? "checkout-shipping-option-selected"
+                        : ""
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="shipping"
+                      value={option.id}
+                      checked={selectedShipping === option.id}
+                      onChange={() => setSelectedShipping(option.id)}
+                    />
+
+                    <span className="checkout-shipping-radio" />
+
+                    <span className="checkout-shipping-icon">
+                      <Truck size={22} />
+                    </span>
+
+                    <span className="checkout-shipping-info">
+                      <strong>{option.name}</strong>
+                      <span>{option.description}</span>
+                      <small>
+                        <Clock3 size={12} />
+                        {option.estimatedDays}
+                      </small>
+                    </span>
+
+                    <strong className="checkout-shipping-price">
+                      {currencyFormatter.format(option.price)}
+                    </strong>
+                  </label>
+                ))}
+              </div>
+
+              <div className="checkout-shipping-notice">
+                <PackageCheck size={16} />
+                <p>
+                  Valores e prazos ilustrativos. O cálculo real do frete será
+                  disponibilizado em uma próxima etapa.
+                </p>
+              </div>
+            </section>
+
             <button type="submit" className="checkout-submit">
               Continuar para pagamento
             </button>
@@ -436,7 +536,20 @@ export default function Checkout() {
               <strong>{currencyFormatter.format(subtotal)}</strong>
             </div>
 
-            <p>O frete será calculado na próxima etapa.</p>
+            <div className="checkout-total checkout-shipping-total">
+              <span>Entrega ({selectedShippingOption?.name ?? "—"})</span>
+              <strong>{currencyFormatter.format(shippingPrice)}</strong>
+            </div>
+
+            <div className="checkout-grand-total">
+              <span>Total do pedido</span>
+              <strong>{currencyFormatter.format(total)}</strong>
+            </div>
+
+            <p>
+              Frete demonstrativo. O valor definitivo será calculado na
+              integração de entrega.
+            </p>
           </aside>
         </div>
       </div>
