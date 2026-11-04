@@ -62,7 +62,7 @@ function Home() {
                 <p>Tecnologia e desempenho.</p>
               </div>
 
-              <span className="category-arrow">↗</span>
+              <span className="category-arrow">↗︎</span>
             </a>
 
             <a href="/acessorios" className="category-card">
@@ -73,7 +73,7 @@ function Home() {
                 <p>Detalhes que fazem diferença.</p>
               </div>
 
-              <span className="category-arrow">↗</span>
+              <span className="category-arrow">↗︎</span>
             </a>
 
             <a href="/radar-tech" className="category-card">
@@ -84,7 +84,7 @@ function Home() {
                 <p>Informação para acompanhar o futuro.</p>
               </div>
 
-              <span className="category-arrow">↗</span>
+              <span className="category-arrow">↗︎</span>
             </a>
           </div>
         </section>
