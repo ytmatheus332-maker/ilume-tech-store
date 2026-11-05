@@ -105,12 +105,9 @@ function Home() {
         <span>ILUME</span>
         <p>Tecnologia. Sem excessos.</p>
 
-        <div className="footer-anniversary">
-          <strong>10</strong>
-          <div>
-            <span>ANOS DE</span>
-            <span>MERCADO</span>
-          </div>
+        <div className="footer-signature">
+          <strong>ILUME AUTHENTIC</strong>
+          <span>SELEÇÃO COM CRITÉRIO</span>
         </div>
 
         <small>© 2026 ILUME TECH STORE.</small>
