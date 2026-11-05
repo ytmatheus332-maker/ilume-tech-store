@@ -80,12 +80,12 @@ export default function Products() {
         </div>
 
         {!isIPhonesPage && (
-          <div className="products-anniversary">
-            <span className="anniversary-number">I</span>
+          <div className="products-signature">
+            <span className="signature-mark">I</span>
 
             <div>
-              <strong>CURADORIA</strong>
-              <span>TECNOLOGIA SELECIONADA</span>
+              <strong>ILUME AUTHENTIC</strong>
+              <span>SELEÇÃO COM CRITÉRIO</span>
             </div>
           </div>
         )}
