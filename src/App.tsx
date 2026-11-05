@@ -93,10 +93,10 @@ function Home() {
 
         <section className="featured">
           <span>CURADORIA ILUME</span>
-          <h2>Tecnologia escolhida com cuidado.</h2>
+          <h2>Tecnologia que combina com você.</h2>
           <p>
-            Estamos preparando nossa seleção de produtos
-            para oferecer uma experiência de compra completa.
+            Uma seleção criteriosa de produtos que une
+            inovação, qualidade e confiança em cada detalhe.
           </p>
         </section>
       </main>
