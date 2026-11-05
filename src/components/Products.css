@@ -58,42 +58,50 @@
   line-height: 1.7;
 }
 
-/* SELO DE ANIVERSÁRIO */
+/* ASSINATURA ILUME AUTHENTIC */
 
-.products-anniversary {
+.products-signature {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 15px;
-  border: 1px solid #e9e9e9;
-  border-radius: 12px;
-  background: #fff;
+  gap: 13px;
+  padding: 8px 0 8px 18px;
+  border-left: 1px solid #dedede;
+  background: transparent;
 }
 
-.anniversary-number {
+.signature-mark {
+  display: flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dedede;
+  border-radius: 50%;
   color: #171717;
-  font-size: 36px;
-  font-weight: 500;
-  letter-spacing: -2px;
-  line-height: 1;
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: -1px;
 }
 
-.products-anniversary > div {
+.products-signature > div {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 5px;
 }
 
-.products-anniversary strong {
-  color: #333;
+.products-signature strong {
+  color: #222;
   font-size: 10px;
+  font-weight: 600;
   letter-spacing: 1.5px;
 }
 
-.products-anniversary > div span {
+.products-signature > div span {
   color: #999;
   font-size: 8px;
-  letter-spacing: 1.1px;
+  font-weight: 500;
+  letter-spacing: 1.2px;
 }
 
 /* GRADE */
@@ -362,6 +370,10 @@
 
   .products-heading p {
     font-size: 13px;
+  }
+
+  .products-signature {
+    padding-left: 13px;
   }
 
   .product-image {
