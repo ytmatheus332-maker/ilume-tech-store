@@ -81,11 +81,11 @@ export default function Products() {
 
         {!isIPhonesPage && (
           <div className="products-anniversary">
-            <span className="anniversary-number">10</span>
+            <span className="anniversary-number">I</span>
 
             <div>
-              <strong>ANOS</strong>
-              <span>DE MERCADO</span>
+              <strong>CURADORIA</strong>
+              <span>TECNOLOGIA SELECIONADA</span>
             </div>
           </div>
         )}
