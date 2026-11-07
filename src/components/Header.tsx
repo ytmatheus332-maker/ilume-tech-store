@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { NavLink, Link, useNavigate } from "react-router-dom";
 import {
   Search,
   ShoppingBag,
@@ -21,6 +21,7 @@ const navigationLinks = [
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
+
   const { totalItems } = useCart();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -32,14 +33,14 @@ export default function Header() {
   return (
     <header className="header">
       <div className="header-container">
-        <a
-          href="/"
+        <Link
+          to="/"
           className="logo"
           onClick={closeMenu}
           aria-label="ILUME - Página inicial"
         >
           ILUME
-        </a>
+        </Link>
 
         <nav
           className={`navigation ${menuOpen ? "navigation-open" : ""}`}
@@ -47,20 +48,24 @@ export default function Header() {
           aria-label="Navegação principal"
         >
           {navigationLinks.map((link) => (
-            <a
+            <NavLink
               key={link.href}
-              href={link.href}
+              to={link.href}
+              end={link.href === "/"}
               onClick={closeMenu}
             >
               {link.label}
-            </a>
+            </NavLink>
           ))}
         </nav>
 
         <div className="header-actions">
           <button
             type="button"
-            aria-label="Buscar produtos"
+            className="search-button"
+            aria-label="Busca em desenvolvimento"
+            title="Busca em desenvolvimento"
+            disabled
           >
             <Search size={20} />
           </button>
@@ -68,7 +73,9 @@ export default function Header() {
           <button
             type="button"
             aria-label={user ? "Minha conta" : "Entrar na conta"}
-            onClick={() => navigate(user ? "/minha-conta" : "/login")}
+            onClick={() =>
+              navigate(user ? "/minha-conta" : "/login")
+            }
           >
             <UserRound size={20} />
           </button>
