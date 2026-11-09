@@ -1,11 +1,14 @@
 
-export type ProductStatus = "draft" | "published" | "inactive" | "archived";
+export type ProductStatus =
+  | "draft"
+  | "published"
+  | "inactive"
+  | "archived";
 
 export type AvailabilityStatus =
   | "available"
   | "unavailable"
-  | "preorder"
-  | "out_of_stock";
+  | "preorder";
 
 export interface CatalogCategory {
   id: string;
@@ -51,6 +54,7 @@ export interface CatalogImage {
   created_at: string;
 }
 
-export interface CatalogProductWithVariants extends CatalogProduct {
+export interface CatalogProductWithVariants
+  extends CatalogProduct {
   variants: CatalogVariant[];
 }
