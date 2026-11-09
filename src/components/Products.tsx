@@ -1,62 +1,131 @@
 
-import { useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { getPublishedProducts } from "../services/catalog";
+import type { CatalogProduct } from "../types/catalog";
 import "./Products.css";
 
-interface Product {
-  id: number;
-  slug: string;
-  name: string;
-  description: string;
-  price: string;
+interface ProductEditorial {
   label: string;
   image: string;
-  rating: number;
-  review: string;
-  qualityLabel: string;
 }
 
-const products: Product[] = [
-  {
-    id: 1,
-    slug: "iphone-15",
-    name: "iPhone 15",
-    description: "Design sofisticado. Desempenho avançado.",
-    price: "R$ 4.499,00",
+const editorialContent: Record<string, ProductEditorial> = {
+  "iphone-15": {
     label: "DESTAQUE",
     image: "/images/iphone-15.jpeg",
-    rating: 5,
-    review: "Excelente proposta de design e tecnologia.",
-    qualityLabel: "Qualidade em destaque",
   },
-  {
-    id: 2,
-    slug: "iphone-16",
-    name: "iPhone 16",
-    description: "Uma nova experiência em tecnologia.",
-    price: "R$ 5.499,00",
+  "iphone-16": {
     label: "POPULAR",
     image: "/images/iphone-16.jpeg",
-    rating: 5,
-    review: "Uma experiência moderna e recursos interessantes.",
-    qualityLabel: "Qualidade em destaque",
   },
-  {
-    id: 3,
-    slug: "iphone-16-pro",
-    name: "iPhone 16 Pro",
-    description: "Potência e precisão em cada detalhe.",
-    price: "R$ 7.499,00",
+  "iphone-16-pro": {
     label: "PREMIUM",
     image: "/images/iphone-16-pro.jpg",
-    rating: 5,
-    review: "Desempenho e acabamento premium.",
-    qualityLabel: "Qualidade em destaque",
   },
-];
+};
+
+function formatPrice(priceCents: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(priceCents / 100);
+}
+
+function getProductImage(product: CatalogProduct): string {
+  const primaryImage = product.images.find((image) => image.is_primary);
+  const firstImage = primaryImage ?? product.images[0];
+
+  if (firstImage?.storage_path) {
+    const path = firstImage.storage_path;
+
+    if (/^https?:\/\//i.test(path)) {
+      return path;
+    }
+  }
+
+  return (
+    editorialContent[product.slug]?.image ??
+    "/images/product-placeholder.png"
+  );
+}
+
+function getProductPrice(product: CatalogProduct): number | null {
+  const availableVariants = product.variants.filter(
+    (variant) =>
+      variant.availability_status === "available" ||
+      variant.availability_status === "preorder"
+  );
+
+  if (availableVariants.length === 0) {
+    return null;
+  }
+
+  return Math.min(
+    ...availableVariants.map((variant) => variant.price_cents)
+  );
+}
 
 export default function Products() {
   const location = useLocation();
   const isIPhonesPage = location.pathname === "/iphones";
+
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadProducts() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const data = await getPublishedProducts();
+
+        if (active) {
+          setProducts(data);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar catálogo:", err);
+
+        if (active) {
+          setError(
+            "Não foi possível carregar os produtos. Tente novamente."
+          );
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadProducts();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const visibleProducts = products.filter((product) => {
+    if (!isIPhonesPage) {
+      return true;
+    }
+
+    const categoryText = [
+      product.name,
+      product.brand,
+      product.model,
+      product.slug,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return categoryText.includes("iphone");
+  });
 
   return (
     <section className="products" id="produtos">
@@ -91,61 +160,83 @@ export default function Products() {
         )}
       </div>
 
-      <div className="products-grid">
-        {products.map((product) => (
-          <article className="product-card" key={product.id}>
-            <div className="product-image">
-              <span className="product-condition">
-                {product.label}
-              </span>
+      {loading && (
+        <div className="products-message" role="status">
+          Carregando produtos...
+        </div>
+      )}
 
-              <img
-                src={product.image}
-                alt={product.name}
-              />
-            </div>
+      {!loading && error && (
+        <div className="products-message" role="alert">
+          {error}
+        </div>
+      )}
 
-            <div className="product-info">
-              <h3>{product.name}</h3>
+      {!loading && !error && visibleProducts.length === 0 && (
+        <div className="products-message">
+          Nenhum produto disponível no momento.
+        </div>
+      )}
 
-              <p>{product.description}</p>
+      {!loading && !error && visibleProducts.length > 0 && (
+        <div className="products-grid">
+          {visibleProducts.map((product) => {
+            const editorial = editorialContent[product.slug];
+            const price = getProductPrice(product);
 
-              <div
-                className="product-rating"
-                aria-label={`${product.rating} de 5 estrelas`}
-              >
-                <span className="product-stars" aria-hidden="true">
-                  {"★".repeat(product.rating)}
-                </span>
+            return (
+              <article className="product-card" key={product.id}>
+                <div className="product-image">
+                  {editorial && (
+                    <span className="product-condition">
+                      {editorial.label}
+                    </span>
+                  )}
 
-                <span className="product-rating-value">
-                  {product.rating.toFixed(1).replace(".", ",")}
-                </span>
-              </div>
+                  <img
+                    src={getProductImage(product)}
+                    alt={product.name}
+                    loading="lazy"
+                    onError={(event) => {
+                      event.currentTarget.src =
+                        "/images/product-placeholder.png";
+                    }}
+                  />
+                </div>
 
-              <div className="product-review">
-                <p>"{product.review}"</p>
-              </div>
+                <div className="product-info">
+                  <h3>{product.name}</h3>
 
-              <div className="product-quality">
-                <span className="quality-check" aria-hidden="true">
-                  ✓
-                </span>
-                {product.qualityLabel}
-              </div>
+                  <p>
+                    {product.short_description ||
+                      product.description ||
+                      "Conheça este produto da ILUME TECH STORE."}
+                  </p>
 
-              <strong>{product.price}</strong>
+                  {price !== null ? (
+                    <strong>{formatPrice(price)}</strong>
+                  ) : (
+                    <strong>Indisponível</strong>
+                  )}
 
-              <a
-                className="product-button"
-                href={`/produto/${product.slug}`}
-              >
-                Conhecer produto
-              </a>
-            </div>
-          </article>
-        ))}
-      </div>
+                  {price !== null ? (
+                    <Link
+                      className="product-button"
+                      to={`/produto/${product.slug}`}
+                    >
+                      Conhecer produto
+                    </Link>
+                  ) : (
+                    <span className="product-button product-button-disabled">
+                      Indisponível
+                    </span>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
