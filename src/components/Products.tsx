@@ -33,7 +33,10 @@ function formatPrice(priceCents: number): string {
 }
 
 function getProductImage(product: CatalogProduct): string {
-  const primaryImage = product.images.find((image) => image.is_primary);
+  const primaryImage = product.images.find(
+    (image) => image.is_primary
+  );
+
   const firstImage = primaryImage ?? product.images[0];
 
   if (firstImage?.storage_path) {
@@ -92,7 +95,9 @@ export default function Products() {
 
         if (active) {
           setError(
-            "Não foi possível carregar os produtos. Tente novamente."
+            err instanceof Error
+              ? err.message
+              : String(err)
           );
         }
       } finally {
@@ -168,7 +173,8 @@ export default function Products() {
 
       {!loading && error && (
         <div className="products-message" role="alert">
-          {error}
+          <strong>Erro ao carregar o catálogo:</strong>
+          <p>{error}</p>
         </div>
       )}
 
@@ -198,6 +204,7 @@ export default function Products() {
                     alt={product.name}
                     loading="lazy"
                     onError={(event) => {
+                      event.currentTarget.onerror = null;
                       event.currentTarget.src =
                         "/images/product-placeholder.png";
                     }}
