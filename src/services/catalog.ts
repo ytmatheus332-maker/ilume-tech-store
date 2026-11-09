@@ -1,10 +1,44 @@
 
-import { supabase } from "../supabase";
+import { supabase } from "../lib/supabase";
 import type {
   CatalogProduct,
   CatalogVariant,
   CatalogImage,
 } from "../types/catalog";
+
+interface ProductRow {
+  id: string;
+  category_id: string | null;
+  name: string;
+  slug: string;
+  brand: string | null;
+  model: string | null;
+  short_description: string | null;
+  description: string | null;
+  published_at: string | null;
+}
+
+interface VariantRow {
+  id: string;
+  product_id: string;
+  color: string | null;
+  storage_gb: number | null;
+  specifications: Record<string, unknown> | null;
+  price_cents: number;
+  compare_at_price_cents: number | null;
+  availability_status: CatalogVariant["availability_status"];
+}
+
+interface ImageRow {
+  id: string;
+  product_id: string;
+  variant_id: string | null;
+  storage_path: string;
+  alt_text: string | null;
+  position: number;
+  is_primary: boolean;
+  created_at: string;
+}
 
 const PRODUCT_COLUMNS = `
   id,
@@ -51,11 +85,13 @@ export async function getPublishedProducts(): Promise<CatalogProduct[]> {
     throw new Error(`Erro ao buscar produtos: ${productsError.message}`);
   }
 
-  if (!products || products.length === 0) {
+  const productRows = (products ?? []) as unknown as ProductRow[];
+
+  if (productRows.length === 0) {
     return [];
   }
 
-  const productIds = products.map((product) => product.id);
+  const productIds = productRows.map((product: ProductRow) => product.id);
 
   const [
     { data: variants, error: variantsError },
@@ -81,18 +117,18 @@ export async function getPublishedProducts(): Promise<CatalogProduct[]> {
     throw new Error(`Erro ao buscar imagens: ${imagesError.message}`);
   }
 
-  return products.map((product) => {
-    const productVariants: CatalogVariant[] = (variants ?? [])
-      .filter((variant) => variant.product_id === product.id)
-      .map((variant) => ({
+  const variantRows = (variants ?? []) as unknown as VariantRow[];
+  const imageRows = (images ?? []) as unknown as ImageRow[];
+
+  return productRows.map((product: ProductRow) => {
+    const productVariants: CatalogVariant[] = variantRows
+      .filter((variant: VariantRow) => variant.product_id === product.id)
+      .map((variant: VariantRow) => ({
         ...variant,
-        specifications: variant.specifications as
-          | Record<string, unknown>
-          | null,
       }));
 
-    const productImages: CatalogImage[] = (images ?? []).filter(
-      (image) => image.product_id === product.id
+    const productImages: CatalogImage[] = imageRows.filter(
+      (image: ImageRow) => image.product_id === product.id
     );
 
     return {
