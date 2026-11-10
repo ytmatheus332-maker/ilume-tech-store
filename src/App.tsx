@@ -1,5 +1,4 @@
-
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import Header from "./components/Header";
 import Products from "./components/Products";
 import ProductDetails from "./pages/ProductDetails";
@@ -9,6 +8,8 @@ import Login from "./pages/Login";
 import MinhaConta from "./pages/MinhaConta";
 import RadarTech from "./pages/RadarTech";
 import { useAuth } from "./context/AuthContext";
+import { AdminGuard } from "./components/AdminGuard";
+import AdminDashboard from "./pages/admin/AdminDashboard";
 import "./App.css";
 
 function Home() {
@@ -31,13 +32,13 @@ function Home() {
             </p>
 
             <div className="hero-actions">
-              <a href="/iphones" className="button-primary">
+              <Link to="/iphones" className="button-primary">
                 Explorar iPhones
-              </a>
+              </Link>
 
-              <a href="/radar-tech" className="button-secondary">
+              <Link to="/radar-tech" className="button-secondary">
                 Conhecer o Radar Tech
-              </a>
+              </Link>
             </div>
           </div>
 
@@ -54,7 +55,7 @@ function Home() {
           </div>
 
           <div className="category-grid">
-            <a href="/iphones" className="category-card">
+            <Link to="/iphones" className="category-card">
               <span className="category-number">01</span>
 
               <div className="category-info">
@@ -63,9 +64,9 @@ function Home() {
               </div>
 
               <span className="category-arrow">↗︎</span>
-            </a>
+            </Link>
 
-            <a href="/acessorios" className="category-card">
+            <Link to="/acessorios" className="category-card">
               <span className="category-number">02</span>
 
               <div className="category-info">
@@ -74,9 +75,9 @@ function Home() {
               </div>
 
               <span className="category-arrow">↗︎</span>
-            </a>
+            </Link>
 
-            <a href="/radar-tech" className="category-card">
+            <Link to="/radar-tech" className="category-card">
               <span className="category-number">03</span>
 
               <div className="category-info">
@@ -85,7 +86,7 @@ function Home() {
               </div>
 
               <span className="category-arrow">↗︎</span>
-            </a>
+            </Link>
           </div>
         </section>
 
@@ -175,9 +176,9 @@ function NotFound() {
       <span>404</span>
       <h2>Página não encontrada.</h2>
       <p>O endereço que você acessou não está disponível.</p>
-      <a href="/" className="button-primary">
+      <Link to="/" className="button-primary">
         Voltar para o início
-      </a>
+      </Link>
     </main>
   );
 }
@@ -189,8 +190,16 @@ function App() {
 
       <Routes>
         <Route path="/" element={<Home />} />
-
         <Route path="/iphones" element={<IPhonesPage />} />
+        
+        <Route 
+          path="/admin" 
+          element={
+            <AdminGuard>
+              <AdminDashboard />
+            </AdminGuard>
+          } 
+        />
 
         <Route
           path="/acessorios"
@@ -204,7 +213,6 @@ function App() {
         />
 
         <Route path="/radar-tech" element={<RadarTech />} />
-
         <Route path="/login" element={<Login />} />
         <Route path="/minha-conta" element={<ProtectedAccount />} />
         <Route path="/produto/:slug" element={<ProductDetails />} />
