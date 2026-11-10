@@ -1,13 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
 
-// Inicializa Supabase
-const supabase = createClient(
-  process.env.SUPABASE_URL || "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-);
+// Inicializa Supabase com as variáveis de ambiente do servidor
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default async function handler(req: any, res: any) {
-  // Garante que o erro sempre retorne JSON
+  // Garante cabeçalho JSON para evitar "Unexpected end of JSON"
+  res.setHeader("Content-Type", "application/json");
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido." });
   }
@@ -17,6 +19,10 @@ export default async function handler(req: any, res: any) {
 
     if (!customer || !items || items.length === 0) {
       return res.status(400).json({ error: "Dados do pedido incompletos." });
+    }
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({ error: "Erro de configuração no servidor: Credenciais do Supabase ausentes." });
     }
 
     // 1. Validar preços no banco para evitar fraude
@@ -31,24 +37,24 @@ export default async function handler(req: any, res: any) {
         .single();
 
       if (vError || !variant) {
-        return res.status(400).json({ error: "Um dos produtos selecionados não está mais disponível." });
+        return res.status(400).json({ error: `Produto indisponível ou inválido: ${item.variantId}` });
       }
 
       totalCents += variant.price_cents * item.quantity;
       itemsParaGateway.push({
-        title: `${(variant.products as any).name} - ${variant.color} (${variant.storage_gb}GB)`,
+        title: `${(variant.products as any)?.name || "Produto"} - ${variant.color || "Padrão"} (${variant.storage_gb || 128}GB)`,
         quantity: item.quantity,
         unit_price: variant.price_cents / 100
       });
     }
 
-    // 2. Criar Pedido no Supabase
+    // 2. Criar Pedido no Supabase (Tratando telefone opcional para evitar erro)
     const { data: order, error: oError } = await supabase
       .from("orders")
       .insert([{
-        customer_name: customer.name,
+        customer_name: customer.name || "Cliente ILUME",
         customer_email: customer.email,
-        customer_phone: customer.phone,
+        customer_phone: customer.phone || "",
         total_amount_cents: totalCents,
         status: "pending",
         gateway
@@ -57,7 +63,10 @@ export default async function handler(req: any, res: any) {
       .single();
 
     if (oError || !order) {
-      throw new Error("Não foi possível registrar o pedido no banco de dados.");
+      console.error("Erro detalhado do Supabase ao criar pedido:", oError);
+      return res.status(500).json({ 
+        error: `Erro ao registrar pedido no banco: ${oError?.message || "Erro desconhecido"}` 
+      });
     }
 
     // 3. Gerar Link no Mercado Pago
@@ -65,9 +74,11 @@ export default async function handler(req: any, res: any) {
 
     if (!mpToken) {
       return res.status(500).json({ 
-        error: "Configuração do Mercado Pago ausente. Adicione o MP_ACCESS_TOKEN nas variáveis de ambiente." 
+        error: "Configuração do Mercado Pago ausente. Adicione o MP_ACCESS_TOKEN nas variáveis de ambiente da Vercel." 
       });
     }
+
+    const storeUrl = process.env.STORE_URL || "https://ilume-tech-store.vercel.app";
 
     const mpResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
       method: "POST",
@@ -84,8 +95,8 @@ export default async function handler(req: any, res: any) {
         })),
         external_reference: order.id,
         back_urls: {
-          success: `${process.env.STORE_URL}/checkout/sucesso`,
-          failure: `${process.env.STORE_URL}/checkout/falha`,
+          success: `${storeUrl}/checkout/sucesso`,
+          failure: `${storeUrl}/checkout/falha`,
         },
         auto_return: "approved"
       })
@@ -94,10 +105,11 @@ export default async function handler(req: any, res: any) {
     const mpData = await mpResponse.json();
 
     if (!mpResponse.ok) {
+      console.error("Erro retornado pela API do Mercado Pago:", mpData);
       throw new Error(mpData.message || "Erro ao gerar preferência no Mercado Pago.");
     }
 
-    // Atualiza pedido com o ID do gateway
+    // Atualiza pedido com o ID da preferência do gateway
     await supabase.from("orders").update({ preference_id: mpData.id }).eq("id", order.id);
 
     return res.status(200).json({ 
@@ -106,7 +118,7 @@ export default async function handler(req: any, res: any) {
     });
 
   } catch (err: any) {
-    console.error("Erro na API de Checkout:", err.message);
+    console.error("Erro crítico na API de Checkout:", err);
     return res.status(500).json({ error: err.message || "Erro interno no servidor." });
   }
 }
