@@ -10,6 +10,8 @@ interface ProductEditorial {
   image: string;
 }
 
+type ProductFilter = "all" | "featured";
+
 const editorialContent: Record<string, ProductEditorial> = {
   "iphone-15": {
     label: "DESTAQUE",
@@ -33,10 +35,7 @@ function formatPrice(priceCents: number): string {
 }
 
 function getProductImage(product: CatalogProduct): string {
-  const primaryImage = product.images.find(
-    (image) => image.is_primary
-  );
-
+  const primaryImage = product.images.find((image) => image.is_primary);
   const firstImage = primaryImage ?? product.images[0];
 
   if (firstImage?.storage_path) {
@@ -56,8 +55,10 @@ function getProductImage(product: CatalogProduct): string {
 function getProductPrice(product: CatalogProduct): number | null {
   const availableVariants = product.variants.filter(
     (variant) =>
-      variant.availability_status === "available" ||
-      variant.availability_status === "preorder"
+      (variant.availability_status === "available" ||
+        variant.availability_status === "preorder") &&
+      variant.price_cents !== null &&
+      variant.price_cents > 0
   );
 
   if (availableVariants.length === 0) {
@@ -65,7 +66,7 @@ function getProductPrice(product: CatalogProduct): number | null {
   }
 
   return Math.min(
-    ...availableVariants.map((variant) => variant.price_cents)
+    ...availableVariants.map((variant) => variant.price_cents as number)
   );
 }
 
@@ -76,6 +77,7 @@ export default function Products() {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<ProductFilter>("all");
 
   useEffect(() => {
     let active = true;
@@ -95,9 +97,7 @@ export default function Products() {
 
         if (active) {
           setError(
-            err instanceof Error
-              ? err.message
-              : String(err)
+            err instanceof Error ? err.message : String(err)
           );
         }
       } finally {
@@ -132,6 +132,15 @@ export default function Products() {
     return categoryText.includes("iphone");
   });
 
+  const featuredProducts = visibleProducts.filter(
+    (product) => Boolean(editorialContent[product.slug])
+  );
+
+  const displayedProducts =
+    activeFilter === "featured"
+      ? featuredProducts
+      : visibleProducts;
+
   return (
     <section className="products" id="produtos">
       <div className="products-heading">
@@ -165,6 +174,32 @@ export default function Products() {
         )}
       </div>
 
+      {!loading && !error && visibleProducts.length > 0 && (
+        <nav className="products-tabs" aria-label="Filtros do catálogo">
+          <button
+            type="button"
+            className={`products-tab ${
+              activeFilter === "all" ? "active" : ""
+            }`}
+            onClick={() => setActiveFilter("all")}
+            aria-pressed={activeFilter === "all"}
+          >
+            {isIPhonesPage ? "Todos os iPhones" : "Todos os produtos"}
+          </button>
+
+          <button
+            type="button"
+            className={`products-tab ${
+              activeFilter === "featured" ? "active" : ""
+            }`}
+            onClick={() => setActiveFilter("featured")}
+            aria-pressed={activeFilter === "featured"}
+          >
+            Destaques
+          </button>
+        </nav>
+      )}
+
       {loading && (
         <div className="products-message" role="status">
           Carregando produtos...
@@ -178,15 +213,17 @@ export default function Products() {
         </div>
       )}
 
-      {!loading && !error && visibleProducts.length === 0 && (
+      {!loading && !error && displayedProducts.length === 0 && (
         <div className="products-message">
-          Nenhum produto disponível no momento.
+          {activeFilter === "featured"
+            ? "Nenhum produto em destaque no momento."
+            : "Nenhum produto disponível no momento."}
         </div>
       )}
 
-      {!loading && !error && visibleProducts.length > 0 && (
+      {!loading && !error && displayedProducts.length > 0 && (
         <div className="products-grid">
-          {visibleProducts.map((product) => {
+          {displayedProducts.map((product) => {
             const editorial = editorialContent[product.slug];
             const price = getProductPrice(product);
 
