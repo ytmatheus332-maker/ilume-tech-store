@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
-import { Package, X, LayoutDashboard, RefreshCcw } from "lucide-react";
+import { X, RefreshCcw } from "lucide-react";
 
 interface ProductSummary {
   id: string;
@@ -17,7 +17,6 @@ interface Variant {
   color: string | null;
   storage_gb: number | null;
   price_cents: number;
-  availability_status: string;
 }
 
 export default function AdminDashboard() {
@@ -62,7 +61,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
+    <div style={{ padding: "2rem" }}>
       <header style={{ display: "flex", justifyContent: "space-between" }}>
         <h1>ILUME CENTRAL</h1>
         <button onClick={fetchProducts}><RefreshCcw size={16} /></button>

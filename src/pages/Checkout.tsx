@@ -1,26 +1,19 @@
 import { useState } from "react";
 import { useCart } from "../context/CartContext";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Lock } from "lucide-react"; // Removi ShieldCheck e Truck
+import { ShieldCheck, Truck, ArrowLeft, Lock } from "lucide-react";
 import "./Checkout.css";
 
 export default function Checkout() {
   const cartContext = useCart();
   const cart = cartContext?.cart || [];
   const clearCart = cartContext?.clearCart || (() => {});
-  const total = cartContext?.total || 0;
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(value || 0);
-  };
 
   async function handleFinishCheckout(e: React.FormEvent) {
     e.preventDefault();
@@ -30,7 +23,6 @@ export default function Checkout() {
     try {
       setLoading(true);
       setError(null);
-
       const itemsPayload = cart.map((item: any) => ({
         variantId: item.variantId || item.id,
         quantity: item.quantity || 1,
@@ -40,7 +32,7 @@ export default function Checkout() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customer: { name, email },
+          customer: { name, email, phone },
           items: itemsPayload,
           gateway: "mercadopago",
         }),
@@ -69,19 +61,19 @@ export default function Checkout() {
   }
 
   return (
-    <main style={{ padding: "4rem 2rem", maxWidth: "1000px", margin: "0 auto", fontFamily: "'Inter', sans-serif" }}>
-      <Link to="/carrinho" style={{ display: "inline-flex", alignItems: "center", gap: "8px", textDecoration: "none", color: "#666", marginBottom: "3rem" }}>
+    <main style={{ padding: "4rem 2rem", maxWidth: "1000px", margin: "0 auto", fontFamily: "'Inter', sans-serif", color: "#171717" }}>
+      <Link to="/carrinho" style={{ display: "inline-flex", alignItems: "center", gap: "8px", textDecoration: "none", color: "#666", fontSize: "0.85rem", marginBottom: "3rem" }}>
         <ArrowLeft size={14} /> Voltar para a sacola
       </Link>
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "4rem" }}>
         <div style={{ background: "#fff", padding: "2.5rem", borderRadius: "12px", border: "1px solid #eaeaea" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#166534", marginBottom: "0.5rem" }}><Lock size={14} /> <span style={{ fontSize: "0.75rem", letterSpacing: "1px", fontWeight: "700" }}>CHECKOUT SEGURO</span></div>
-          <h1 style={{ fontSize: "2rem", fontWeight: "700", marginBottom: "1.5rem" }}>Finalizar Pedido</h1>
-          {error && <div style={{ background: "#fee2e2", color: "#991b1b", padding: "1rem", borderRadius: "6px", marginBottom: "1rem" }}>{error}</div>}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#166534", marginBottom: "0.5rem" }}><Lock size={14} /> <span style={{ fontSize: "0.75rem", fontWeight: "700" }}>CHECKOUT SEGURO</span></div>
+          <h1 style={{ fontSize: "2rem", marginBottom: "1.5rem" }}>Finalizar Pedido</h1>
+          {error && <div style={{ background: "#fee2e2", padding: "1rem", borderRadius: "6px", marginBottom: "1rem" }}>{error}</div>}
           <form onSubmit={handleFinishCheckout} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <input type="text" placeholder="Nome Completo" value={name} onChange={e => setName(e.target.value)} style={{ padding: "0.9rem", borderRadius: "6px", border: "1px solid #ddd" }} required />
-            <input type="email" placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} style={{ padding: "0.9rem", borderRadius: "6px", border: "1px solid #ddd" }} required />
-            <button type="submit" disabled={loading} style={{ padding: "1rem", background: "#000", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", cursor: "pointer" }}>
+            <input type="text" placeholder="Nome" value={name} onChange={e => setName(e.target.value)} style={{ padding: "0.9rem", border: "1px solid #ddd" }} required />
+            <input type="email" placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} style={{ padding: "0.9rem", border: "1px solid #ddd" }} required />
+            <button type="submit" disabled={loading} style={{ padding: "1rem", background: "#000", color: "#fff", border: "none", cursor: "pointer" }}>
               {loading ? "Processando..." : "Ir para o Pagamento"}
             </button>
           </form>
