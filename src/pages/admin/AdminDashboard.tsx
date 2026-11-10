@@ -1,7 +1,15 @@
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
 import { supabase } from "../../lib/supabase";
-import { X, RefreshCcw, Plus, Package, CheckCircle } from "lucide-react";
+import {
+  X,
+  RefreshCcw,
+  Plus,
+  Package,
+  CheckCircle,
+  ImagePlus,
+  Star,
+} from "lucide-react";
 
 interface ProductSummary {
   id: string;
@@ -19,6 +27,14 @@ interface VariantSummary {
   price_cents: number | null;
   availability_status: string;
   is_active: boolean;
+}
+
+interface ProductImageSummary {
+  id: string;
+  storage_path: string;
+  alt_text: string | null;
+  position: number;
+  is_primary: boolean;
 }
 
 const NEW_IPHONE_MODELS = [
@@ -56,6 +72,7 @@ function formatPrice(value: number | null) {
 export default function AdminDashboard() {
   const [products, setProducts] = useState<ProductSummary[]>([]);
   const [variants, setVariants] = useState<VariantSummary[]>([]);
+  const [images, setImages] = useState<ProductImageSummary[]>([]);
   const [selectedProduct, setSelectedProduct] =
     useState<ProductSummary | null>(null);
 
@@ -66,6 +83,7 @@ export default function AdminDashboard() {
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -103,6 +121,21 @@ export default function AdminDashboard() {
     }
 
     setVariants(data || []);
+  }
+
+  async function fetchImages(productId: string) {
+    const { data, error } = await supabase
+      .from("product_images")
+      .select("id, storage_path, alt_text, position, is_primary")
+      .eq("product_id", productId)
+      .order("position");
+
+    if (error) {
+      alert("Erro ao carregar imagens: " + error.message);
+      return;
+    }
+
+    setImages(data || []);
   }
 
   async function handleCreateModels() {
@@ -163,7 +196,6 @@ export default function AdminDashboard() {
       if (insertError) throw insertError;
 
       alert(`${missingModels.length} modelos cadastrados como rascunho.`);
-
       await fetchProducts();
     } catch (error) {
       const message =
@@ -180,13 +212,14 @@ export default function AdminDashboard() {
     setColor("");
     setStorage("128");
     setPriceReais("");
+    setSku(
+      `${product.slug.toUpperCase()}-${Date.now().toString().slice(-6)}`
+    );
 
-    const generatedSku =
-      `${product.slug.toUpperCase()}-${Date.now().toString().slice(-6)}`;
-
-    setSku(generatedSku);
-
-    await fetchVariants(product.id);
+    await Promise.all([
+      fetchVariants(product.id),
+      fetchImages(product.id),
+    ]);
   }
 
   async function handleAddVariant(event: FormEvent<HTMLFormElement>) {
@@ -232,7 +265,6 @@ export default function AdminDashboard() {
 
       setPriceReais("");
       setColor("");
-
       setSku(
         `${selectedProduct.slug.toUpperCase()}-${Date.now()
           .toString()
@@ -276,6 +308,119 @@ export default function AdminDashboard() {
     await fetchVariants(selectedProduct.id);
   }
 
+  async function handleUploadImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file || !selectedProduct) return;
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+
+    if (!allowedTypes.includes(file.type)) {
+      alert("Formato inválido. Utilize JPG, PNG ou WEBP.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("A imagem deve ter no máximo 5 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+
+      const filePath = `${selectedProduct.slug}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("product-images")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from("product-images")
+        .getPublicUrl(filePath);
+
+      const publicUrl = publicUrlData.publicUrl;
+
+      const { data: lastImage, error: positionError } = await supabase
+        .from("product_images")
+        .select("position")
+        .eq("product_id", selectedProduct.id)
+        .order("position", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (positionError) throw positionError;
+
+      const nextPosition = (lastImage?.position ?? -1) + 1;
+      const isFirstImage = images.length === 0;
+
+      const { error: insertError } = await supabase
+        .from("product_images")
+        .insert({
+          product_id: selectedProduct.id,
+          storage_path: publicUrl,
+          alt_text: `${selectedProduct.name} - imagem do produto`,
+          position: nextPosition,
+          is_primary: isFirstImage,
+        });
+
+      if (insertError) throw insertError;
+
+      alert("Imagem enviada e cadastrada com sucesso!");
+
+      await fetchImages(selectedProduct.id);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erro desconhecido";
+
+      alert("Erro ao enviar imagem: " + message);
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  }
+
+  async function handleSetPrimary(image: ProductImageSummary) {
+    if (!selectedProduct) return;
+
+    setSaving(true);
+
+    try {
+      const { error: resetError } = await supabase
+        .from("product_images")
+        .update({ is_primary: false })
+        .eq("product_id", selectedProduct.id);
+
+      if (resetError) throw resetError;
+
+      const { error: primaryError } = await supabase
+        .from("product_images")
+        .update({ is_primary: true })
+        .eq("id", image.id);
+
+      if (primaryError) throw primaryError;
+
+      await fetchImages(selectedProduct.id);
+      alert("Imagem principal atualizada!");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erro desconhecido";
+
+      alert("Erro ao definir imagem principal: " + message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handlePublishProduct() {
     if (!selectedProduct) return;
 
@@ -288,10 +433,13 @@ export default function AdminDashboard() {
       return;
     }
 
+    if (images.length === 0) {
+      alert("Cadastre pelo menos uma imagem antes de publicar.");
+      return;
+    }
+
     if (
-      !window.confirm(
-        `Publicar ${selectedProduct.name} na loja?`
-      )
+      !window.confirm(`Publicar ${selectedProduct.name} na loja?`)
     ) {
       return;
     }
@@ -310,10 +458,12 @@ export default function AdminDashboard() {
       alert("Erro ao publicar produto: " + error.message);
     } else {
       alert("Produto publicado com sucesso!");
+
       setSelectedProduct({
         ...selectedProduct,
         status: "published",
       });
+
       await fetchProducts();
     }
 
@@ -430,6 +580,7 @@ export default function AdminDashboard() {
               border: "2px solid #111",
               borderRadius: "8px",
               padding: "1rem",
+              minWidth: 0,
             }}
           >
             <div
@@ -445,11 +596,112 @@ export default function AdminDashboard() {
                 onClick={() => {
                   setSelectedProduct(null);
                   setVariants([]);
+                  setImages([]);
                 }}
               >
                 <X />
               </button>
             </div>
+
+            <h3>Imagens do produto</h3>
+
+            <label
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "10px",
+                padding: "24px",
+                border: "2px dashed #aaa",
+                borderRadius: "8px",
+                cursor: uploading ? "wait" : "pointer",
+                textAlign: "center",
+                marginBottom: "1rem",
+              }}
+            >
+              <ImagePlus size={30} />
+
+              <strong>
+                {uploading ? "Enviando imagem..." : "Adicionar foto"}
+              </strong>
+
+              <small>JPG, PNG ou WEBP — máximo 5 MB</small>
+
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleUploadImage}
+                disabled={uploading}
+                style={{ display: "none" }}
+              />
+            </label>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: "10px",
+              }}
+            >
+              {images.map((image) => (
+                <div
+                  key={image.id}
+                  style={{
+                    border: image.is_primary
+                      ? "2px solid #166534"
+                      : "1px solid #ddd",
+                    borderRadius: "8px",
+                    padding: "6px",
+                    minWidth: 0,
+                  }}
+                >
+                  <img
+                    src={image.storage_path}
+                    alt={image.alt_text || selectedProduct.name}
+                    style={{
+                      width: "100%",
+                      aspectRatio: "1 / 1",
+                      objectFit: "contain",
+                      borderRadius: "5px",
+                    }}
+                  />
+
+                  {image.is_primary ? (
+                    <p
+                      style={{
+                        color: "#166534",
+                        fontSize: "12px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <Star size={13} /> Imagem principal
+                    </p>
+                  ) : (
+                    <button
+                      onClick={() => handleSetPrimary(image)}
+                      disabled={saving}
+                      style={{
+                        width: "100%",
+                        marginTop: "6px",
+                        padding: "7px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Definir como principal
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {images.length === 0 && (
+              <p style={{ color: "#777", fontSize: "13px" }}>
+                Nenhuma foto cadastrada.
+              </p>
+            )}
+
+            <hr style={{ margin: "1.5rem 0" }} />
 
             <h3>Variantes cadastradas</h3>
 
