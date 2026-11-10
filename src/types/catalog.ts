@@ -10,6 +10,11 @@ export type AvailabilityStatus =
   | "unavailable"
   | "preorder";
 
+export type ProductCampaignType =
+  | "promotion"
+  | "black_friday"
+  | null;
+
 export interface CatalogCategory {
   id: string;
   parent_id: string | null;
@@ -28,6 +33,9 @@ export interface CatalogProduct {
   short_description: string | null;
   description: string | null;
   published_at: string | null;
+  is_featured: boolean;
+  campaign_type: ProductCampaignType;
+  badge_label: string | null;
   variants: CatalogVariant[];
   images: CatalogImage[];
 }

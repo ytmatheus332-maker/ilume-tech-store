@@ -4,6 +4,7 @@ import type {
   CatalogProduct,
   CatalogVariant,
   CatalogImage,
+  ProductCampaignType,
 } from "../types/catalog";
 
 interface ProductRow {
@@ -16,6 +17,9 @@ interface ProductRow {
   short_description: string | null;
   description: string | null;
   published_at: string | null;
+  is_featured: boolean;
+  campaign_type: ProductCampaignType;
+  badge_label: string | null;
 }
 
 interface VariantRow {
@@ -49,7 +53,10 @@ const PRODUCT_COLUMNS = `
   model,
   short_description,
   description,
-  published_at
+  published_at,
+  is_featured,
+  campaign_type,
+  badge_label
 `;
 
 const VARIANT_COLUMNS = `
@@ -91,7 +98,7 @@ export async function getPublishedProducts(): Promise<CatalogProduct[]> {
     return [];
   }
 
-  const productIds = productRows.map((product: ProductRow) => product.id);
+  const productIds = productRows.map((product) => product.id);
 
   const [
     { data: variants, error: variantsError },
@@ -120,15 +127,13 @@ export async function getPublishedProducts(): Promise<CatalogProduct[]> {
   const variantRows = (variants ?? []) as unknown as VariantRow[];
   const imageRows = (images ?? []) as unknown as ImageRow[];
 
-  return productRows.map((product: ProductRow) => {
+  return productRows.map((product) => {
     const productVariants: CatalogVariant[] = variantRows
-      .filter((variant: VariantRow) => variant.product_id === product.id)
-      .map((variant: VariantRow) => ({
-        ...variant,
-      }));
+      .filter((variant) => variant.product_id === product.id)
+      .map((variant) => ({ ...variant }));
 
     const productImages: CatalogImage[] = imageRows.filter(
-      (image: ImageRow) => image.product_id === product.id
+      (image) => image.product_id === product.id
     );
 
     return {

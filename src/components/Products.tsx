@@ -2,30 +2,10 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getPublishedProducts } from "../services/catalog";
-import type { CatalogProduct } from "../types/catalog";
+import type { CatalogProduct, CatalogVariant } from "../types/catalog";
 import "./Products.css";
 
-interface ProductEditorial {
-  label: string;
-  image: string;
-}
-
 type ProductFilter = "all" | "featured";
-
-const editorialContent: Record<string, ProductEditorial> = {
-  "iphone-15": {
-    label: "DESTAQUE",
-    image: "/images/iphone-15.jpeg",
-  },
-  "iphone-16": {
-    label: "POPULAR",
-    image: "/images/iphone-16.jpeg",
-  },
-  "iphone-16-pro": {
-    label: "PREMIUM",
-    image: "/images/iphone-16-pro.jpg",
-  },
-};
 
 function formatPrice(priceCents: number): string {
   return new Intl.NumberFormat("pt-BR", {
@@ -46,18 +26,16 @@ function getProductImage(product: CatalogProduct): string {
     }
   }
 
-  return (
-    editorialContent[product.slug]?.image ??
-    "/images/product-placeholder.png"
-  );
+  return "/images/product-placeholder.png";
 }
 
-function getProductPrice(product: CatalogProduct): number | null {
+function getBestVariant(
+  product: CatalogProduct
+): CatalogVariant | null {
   const availableVariants = product.variants.filter(
     (variant) =>
       (variant.availability_status === "available" ||
         variant.availability_status === "preorder") &&
-      variant.price_cents !== null &&
       variant.price_cents > 0
   );
 
@@ -65,8 +43,36 @@ function getProductPrice(product: CatalogProduct): number | null {
     return null;
   }
 
-  return Math.min(
-    ...availableVariants.map((variant) => variant.price_cents as number)
+  return availableVariants.reduce((lowest, current) =>
+    current.price_cents < lowest.price_cents ? current : lowest
+  );
+}
+
+function getProductBadge(product: CatalogProduct): string | null {
+  if (product.badge_label?.trim()) {
+    return product.badge_label.trim();
+  }
+
+  if (product.campaign_type === "black_friday") {
+    return "BLACK FRIDAY";
+  }
+
+  if (product.campaign_type === "promotion") {
+    return "OFERTA ESPECIAL";
+  }
+
+  if (product.is_featured) {
+    return "DESTAQUE";
+  }
+
+  return null;
+}
+
+function getProductDescription(product: CatalogProduct): string {
+  return (
+    product.short_description?.trim() ||
+    product.description?.trim() ||
+    "Conheça este produto da ILUME TECH STORE."
   );
 }
 
@@ -133,7 +139,7 @@ export default function Products() {
   });
 
   const featuredProducts = visibleProducts.filter(
-    (product) => Boolean(editorialContent[product.slug])
+    (product) => product.is_featured
   );
 
   const displayedProducts =
@@ -224,16 +230,34 @@ export default function Products() {
       {!loading && !error && displayedProducts.length > 0 && (
         <div className="products-grid">
           {displayedProducts.map((product) => {
-            const editorial = editorialContent[product.slug];
-            const price = getProductPrice(product);
+            const variant = getBestVariant(product);
+            const badge = getProductBadge(product);
+            const description = getProductDescription(product);
+
+            const currentPrice = variant?.price_cents ?? null;
+            const originalPrice =
+              variant?.compare_at_price_cents ?? null;
+
+            const hasDiscount =
+              currentPrice !== null &&
+              originalPrice !== null &&
+              originalPrice > currentPrice;
 
             return (
               <article className="product-card" key={product.id}>
                 <div className="product-image">
-                  {editorial && (
-                    <span className="product-condition">
-                      {editorial.label}
-                    </span>
+                  {badge && (
+                    <div className="product-badges">
+                      <span
+                        className={`product-badge ${
+                          product.campaign_type
+                            ? `product-badge--${product.campaign_type}`
+                            : ""
+                        }`}
+                      >
+                        {badge}
+                      </span>
+                    </div>
                   )}
 
                   <img
@@ -251,19 +275,35 @@ export default function Products() {
                 <div className="product-info">
                   <h3>{product.name}</h3>
 
-                  <p>
-                    {product.short_description ||
-                      product.description ||
-                      "Conheça este produto da ILUME TECH STORE."}
+                  <p className="product-description">
+                    {description}
                   </p>
 
-                  {price !== null ? (
-                    <strong>{formatPrice(price)}</strong>
+                  {currentPrice !== null ? (
+                    <div className="product-price">
+                      {hasDiscount && (
+                        <span className="product-price-original">
+                          {formatPrice(originalPrice)}
+                        </span>
+                      )}
+
+                      <strong>
+                        {formatPrice(currentPrice)}
+                      </strong>
+
+                      {hasDiscount && (
+                        <span className="product-price-label">
+                          Oferta especial
+                        </span>
+                      )}
+                    </div>
                   ) : (
-                    <strong>Indisponível</strong>
+                    <strong className="product-unavailable">
+                      Indisponível
+                    </strong>
                   )}
 
-                  {price !== null ? (
+                  {currentPrice !== null ? (
                     <Link
                       className="product-button"
                       to={`/produto/${product.slug}`}
