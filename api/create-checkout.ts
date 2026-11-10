@@ -1,13 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 
-// Inicializa Supabase com as variáveis de ambiente do servidor
+// Inicialização com prioridade máxima para a Service Role Key (Bypass de RLS)
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: { persistSession: false, autoRefreshToken: false }
+});
 
 export default async function handler(req: any, res: any) {
-  // Garante cabeçalho JSON para evitar "Unexpected end of JSON"
   res.setHeader("Content-Type", "application/json");
 
   if (req.method !== "POST") {
@@ -21,11 +22,12 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: "Dados do pedido incompletos." });
     }
 
-    if (!supabaseUrl || !supabaseKey) {
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("ERRO CRÍTICO: Variáveis do Supabase ausentes no servidor.");
       return res.status(500).json({ error: "Erro de configuração no servidor: Credenciais do Supabase ausentes." });
     }
 
-    // 1. Validar preços no banco para evitar fraude
+    // 1. Validar preços no banco
     let totalCents = 0;
     const itemsParaGateway = [];
 
@@ -48,7 +50,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 2. Criar Pedido no Supabase (Tratando telefone opcional para evitar erro)
+    // 2. Criar Pedido no Supabase usando Service Role
     const { data: order, error: oError } = await supabase
       .from("orders")
       .insert([{
@@ -63,7 +65,7 @@ export default async function handler(req: any, res: any) {
       .single();
 
     if (oError || !order) {
-      console.error("Erro detalhado do Supabase ao criar pedido:", oError);
+      console.error("ERRO SUPABASE [orders]:", oError);
       return res.status(500).json({ 
         error: `Erro ao registrar pedido no banco: ${oError?.message || "Erro desconhecido"}` 
       });
@@ -74,7 +76,7 @@ export default async function handler(req: any, res: any) {
 
     if (!mpToken) {
       return res.status(500).json({ 
-        error: "Configuração do Mercado Pago ausente. Adicione o MP_ACCESS_TOKEN nas variáveis de ambiente da Vercel." 
+        error: "Configuração do Mercado Pago ausente. Adicione o MP_ACCESS_TOKEN nas variáveis de ambiente." 
       });
     }
 
@@ -105,11 +107,10 @@ export default async function handler(req: any, res: any) {
     const mpData = await mpResponse.json();
 
     if (!mpResponse.ok) {
-      console.error("Erro retornado pela API do Mercado Pago:", mpData);
+      console.error("ERRO MERCADO PAGO:", mpData);
       throw new Error(mpData.message || "Erro ao gerar preferência no Mercado Pago.");
     }
 
-    // Atualiza pedido com o ID da preferência do gateway
     await supabase.from("orders").update({ preference_id: mpData.id }).eq("id", order.id);
 
     return res.status(200).json({ 
@@ -118,7 +119,7 @@ export default async function handler(req: any, res: any) {
     });
 
   } catch (err: any) {
-    console.error("Erro crítico na API de Checkout:", err);
+    console.error("ERRO CRÍTICO CHECKOUT:", err);
     return res.status(500).json({ error: err.message || "Erro interno no servidor." });
   }
 }
