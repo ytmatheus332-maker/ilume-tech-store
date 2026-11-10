@@ -1,6 +1,13 @@
 
-import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useState,
+  type FormEvent,
+  type ChangeEvent,
+} from "react";
+
 import { supabase } from "../../lib/supabase";
+
 import {
   X,
   RefreshCcw,
@@ -9,14 +16,22 @@ import {
   CheckCircle,
   ImagePlus,
   Star,
+  Trash2,
+  Tag,
+  Save,
 } from "lucide-react";
+
+type CampaignType = "promotion" | "black_friday" | null;
 
 interface ProductSummary {
   id: string;
   name: string;
   slug: string;
   status: string;
-  brand: string;
+  brand: string | null;
+  is_featured: boolean;
+  campaign_type: CampaignType;
+  badge_label: string | null;
 }
 
 interface VariantSummary {
@@ -73,6 +88,7 @@ export default function AdminDashboard() {
   const [products, setProducts] = useState<ProductSummary[]>([]);
   const [variants, setVariants] = useState<VariantSummary[]>([]);
   const [images, setImages] = useState<ProductImageSummary[]>([]);
+
   const [selectedProduct, setSelectedProduct] =
     useState<ProductSummary | null>(null);
 
@@ -94,13 +110,15 @@ export default function AdminDashboard() {
 
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, slug, status, brand")
+      .select(
+        "id, name, slug, status, brand, is_featured, campaign_type, badge_label"
+      )
       .order("name");
 
     if (error) {
       alert("Erro ao carregar catálogo: " + error.message);
     } else {
-      setProducts(data || []);
+      setProducts((data || []) as ProductSummary[]);
     }
 
     setLoading(false);
@@ -196,6 +214,7 @@ export default function AdminDashboard() {
       if (insertError) throw insertError;
 
       alert(`${missingModels.length} modelos cadastrados como rascunho.`);
+
       await fetchProducts();
     } catch (error) {
       const message =
@@ -212,6 +231,7 @@ export default function AdminDashboard() {
     setColor("");
     setStorage("128");
     setPriceReais("");
+
     setSku(
       `${product.slug.toUpperCase()}-${Date.now().toString().slice(-6)}`
     );
@@ -220,6 +240,48 @@ export default function AdminDashboard() {
       fetchVariants(product.id),
       fetchImages(product.id),
     ]);
+  }
+
+  function handleCampaignChange(
+    field: "is_featured" | "campaign_type" | "badge_label",
+    value: boolean | CampaignType | string
+  ) {
+    if (!selectedProduct) return;
+
+    setSelectedProduct({
+      ...selectedProduct,
+      [field]: value,
+    });
+  }
+
+  async function handleSaveCampaign() {
+    if (!selectedProduct) return;
+
+    setSaving(true);
+
+    try {
+      const { error } = await supabase
+        .from("products")
+        .update({
+          is_featured: selectedProduct.is_featured,
+          campaign_type: selectedProduct.campaign_type,
+          badge_label: selectedProduct.badge_label?.trim() || null,
+        })
+        .eq("id", selectedProduct.id);
+
+      if (error) throw error;
+
+      alert("Personalização do produto salva com sucesso!");
+
+      await fetchProducts();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erro desconhecido";
+
+      alert("Erro ao salvar personalização: " + message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleAddVariant(event: FormEvent<HTMLFormElement>) {
@@ -265,6 +327,7 @@ export default function AdminDashboard() {
 
       setPriceReais("");
       setColor("");
+
       setSku(
         `${selectedProduct.slug.toUpperCase()}-${Date.now()
           .toString()
@@ -308,7 +371,58 @@ export default function AdminDashboard() {
     await fetchVariants(selectedProduct.id);
   }
 
-  async function handleUploadImage(event: ChangeEvent<HTMLInputElement>) {
+  async function handleDeleteVariant(variant: VariantSummary) {
+    if (!selectedProduct) return;
+
+    const confirmed = window.confirm(
+      `Excluir definitivamente a variante ${variant.sku}?\n\n` +
+        "A exclusão só será possível se não existirem imagens, histórico de preços, pedidos ou ofertas vinculadas.\n\n" +
+        "Esta ação não poderá ser desfeita."
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+
+    try {
+      const { error } = await supabase
+        .from("product_variants")
+        .delete()
+        .eq("id", variant.id);
+
+      if (error) {
+        if (
+          error.code === "23503" ||
+          error.message.toLowerCase().includes("foreign key")
+        ) {
+          alert(
+            "Não é possível excluir esta variante porque existem registros vinculados, como imagens, histórico de preços, pedidos ou ofertas de fornecedores.\n\n" +
+              "Por segurança, utilize o botão Desativar."
+          );
+        } else {
+          alert("Erro ao excluir variante: " + error.message);
+        }
+
+        return;
+      }
+
+      alert("Variante excluída com sucesso!");
+
+      await fetchVariants(selectedProduct.id);
+      await fetchImages(selectedProduct.id);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erro desconhecido";
+
+      alert("Não foi possível excluir a variante: " + message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleUploadImage(
+    event: ChangeEvent<HTMLInputElement>
+  ) {
     const file = event.target.files?.[0];
 
     if (!file || !selectedProduct) return;
@@ -330,9 +444,11 @@ export default function AdminDashboard() {
     setUploading(true);
 
     try {
-      const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+      const extension =
+        file.name.split(".").pop()?.toLowerCase() || "jpg";
 
-      const filePath = `${selectedProduct.slug}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+      const filePath =
+        `${selectedProduct.slug}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from("product-images")
@@ -410,6 +526,7 @@ export default function AdminDashboard() {
       if (primaryError) throw primaryError;
 
       await fetchImages(selectedProduct.id);
+
       alert("Imagem principal atualizada!");
     } catch (error) {
       const message =
@@ -425,7 +542,8 @@ export default function AdminDashboard() {
     if (!selectedProduct) return;
 
     const hasActiveVariant = variants.some(
-      (variant) => variant.is_active && variant.price_cents !== null
+      (variant) =>
+        variant.is_active && variant.price_cents !== null
     );
 
     if (!hasActiveVariant) {
@@ -498,7 +616,9 @@ export default function AdminDashboard() {
       <section
         style={{
           display: "grid",
-          gridTemplateColumns: selectedProduct ? "1fr 400px" : "1fr",
+          gridTemplateColumns: selectedProduct
+            ? "minmax(0, 1fr) minmax(0, 400px)"
+            : "1fr",
           gap: "2rem",
           marginTop: "2rem",
           alignItems: "start",
@@ -509,6 +629,7 @@ export default function AdminDashboard() {
             border: "1px solid #ddd",
             borderRadius: "8px",
             padding: "1rem",
+            minWidth: 0,
           }}
         >
           <div
@@ -556,10 +677,19 @@ export default function AdminDashboard() {
             >
               <div>
                 <strong>{product.name}</strong>
+
                 <div style={{ fontSize: "12px", color: "#777" }}>
                   {product.status === "published"
                     ? "Publicado"
                     : "Rascunho"}
+
+                  {product.is_featured && " • Destaque"}
+
+                  {product.campaign_type === "promotion" &&
+                    " • Promoção"}
+
+                  {product.campaign_type === "black_friday" &&
+                    " • Black Friday"}
                 </div>
               </div>
 
@@ -602,6 +732,115 @@ export default function AdminDashboard() {
                 <X />
               </button>
             </div>
+
+            <hr style={{ margin: "1rem 0" }} />
+
+            <h3>
+              <Tag size={17} /> Personalização e campanhas
+            </h3>
+
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "14px",
+                margin: "1rem 0",
+              }}
+            >
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedProduct.is_featured}
+                  onChange={(event) =>
+                    handleCampaignChange(
+                      "is_featured",
+                      event.target.checked
+                    )
+                  }
+                />
+
+                <Star size={17} />
+
+                Produto em destaque
+              </label>
+
+              <label>
+                Campanha do produto
+
+                <select
+                  value={selectedProduct.campaign_type || ""}
+                  onChange={(event) =>
+                    handleCampaignChange(
+                      "campaign_type",
+                      (event.target.value || null) as CampaignType
+                    )
+                  }
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "10px",
+                    marginTop: "6px",
+                  }}
+                >
+                  <option value="">Nenhuma campanha</option>
+                  <option value="promotion">Promoção</option>
+                  <option value="black_friday">Black Friday</option>
+                </select>
+              </label>
+
+              <label>
+                Etiqueta personalizada
+
+                <input
+                  type="text"
+                  maxLength={40}
+                  placeholder="Ex: MAIS VENDIDO"
+                  value={selectedProduct.badge_label || ""}
+                  onChange={(event) =>
+                    handleCampaignChange(
+                      "badge_label",
+                      event.target.value
+                    )
+                  }
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "10px",
+                    marginTop: "6px",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </label>
+
+              <button
+                onClick={handleSaveCampaign}
+                disabled={saving}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  width: "100%",
+                  padding: "12px",
+                  background: "#111",
+                  color: "#fff",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                <Save size={16} />
+                Salvar personalização
+              </button>
+            </div>
+
+            <hr style={{ margin: "1.5rem 0" }} />
 
             <h3>Imagens do produto</h3>
 
@@ -726,9 +965,17 @@ export default function AdminDashboard() {
 
                 <small>{variant.sku}</small>
 
-                <div style={{ marginTop: "8px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                    marginTop: "8px",
+                  }}
+                >
                   <button
                     onClick={() => handleToggleVariant(variant)}
+                    disabled={saving}
                     style={{
                       padding: "6px 10px",
                       background: variant.is_active ? "#166534" : "#555",
@@ -739,6 +986,25 @@ export default function AdminDashboard() {
                     }}
                   >
                     {variant.is_active ? "Desativar" : "Ativar"}
+                  </button>
+
+                  <button
+                    onClick={() => handleDeleteVariant(variant)}
+                    disabled={saving}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      padding: "6px 10px",
+                      background: "#991b1b",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Trash2 size={14} />
+                    Excluir
                   </button>
                 </div>
               </div>
@@ -796,7 +1062,9 @@ export default function AdminDashboard() {
                 inputMode="decimal"
                 placeholder="Preço (Ex: 5499.00)"
                 value={priceReais}
-                onChange={(event) => setPriceReais(event.target.value)}
+                onChange={(event) =>
+                  setPriceReais(event.target.value)
+                }
                 required
               />
 
