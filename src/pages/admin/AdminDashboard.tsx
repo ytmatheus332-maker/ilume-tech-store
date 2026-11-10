@@ -10,22 +10,11 @@ interface ProductSummary {
   brand: string;
 }
 
-interface Variant {
-  id: string;
-  product_id: string;
-  sku: string;
-  color: string | null;
-  storage_gb: number | null;
-  price_cents: number;
-}
-
 export default function AdminDashboard() {
   const [products, setProducts] = useState<ProductSummary[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<ProductSummary | null>(null);
-  const [variants, setVariants] = useState<Variant[]>([]);
   const [sku, setSku] = useState("");
   const [color, setColor] = useState("");
-  const [storageGb, setStorageGb] = useState("128");
   const [priceReais, setPriceReais] = useState("");
 
   useEffect(() => {
@@ -40,8 +29,6 @@ export default function AdminDashboard() {
   async function handleOpenVariants(product: ProductSummary) {
     setSelectedProduct(product);
     setSku(`${product.slug.toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`);
-    const { data } = await supabase.from("product_variants").select("*").eq("product_id", product.id);
-    setVariants(data || []);
   }
 
   async function handleAddVariant(e: React.FormEvent) {
@@ -52,16 +39,16 @@ export default function AdminDashboard() {
       product_id: selectedProduct.id,
       sku: sku,
       color: color || "Padrão",
-      storage_gb: parseInt(storageGb),
+      storage_gb: 128,
       price_cents: Math.round(priceNum * 100),
       availability_status: "available"
     }]);
     setPriceReais("");
-    handleOpenVariants(selectedProduct);
+    alert("Preço salvo com sucesso!");
   }
 
   return (
-    <div style={{ padding: "2rem" }}>
+    <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
       <header style={{ display: "flex", justifyContent: "space-between" }}>
         <h1>ILUME CENTRAL</h1>
         <button onClick={fetchProducts}><RefreshCcw size={16} /></button>
@@ -85,7 +72,7 @@ export default function AdminDashboard() {
               <input type="text" placeholder="SKU" value={sku} onChange={e => setSku(e.target.value)} required />
               <input type="text" placeholder="Cor" value={color} onChange={e => setColor(e.target.value)} />
               <input type="text" placeholder="Preço (Ex: 5499.00)" value={priceReais} onChange={e => setPriceReais(e.target.value)} required />
-              <button type="submit">PUBLICAR</button>
+              <button type="submit" style={{ padding: "10px", background: "#000", color: "#fff", border: "none" }}>PUBLICAR PREÇO</button>
             </form>
           </div>
         )}
