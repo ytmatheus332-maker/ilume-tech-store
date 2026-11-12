@@ -1,6 +1,8 @@
 /* =====================================
    ILUME TECH STORE
-   MAIN PAGE STYLES
+   MAIN PAGE — BLACK PREMIUM
+   Alterações exclusivamente visuais.
+   Estrutura, dimensões e responsividade preservadas.
 ===================================== */
 
 main {
@@ -8,10 +10,7 @@ main {
   overflow: hidden;
 }
 
-/* =====================================
-   BANNER PRINCIPAL
-===================================== */
-
+/* BANNER PRINCIPAL */
 .hero {
   display: grid;
   grid-template-columns: 1.1fr 0.9fr;
@@ -20,17 +19,17 @@ main {
   width: 100%;
   min-height: 490px;
   padding: 80px max(8%, calc((100% - 1200px) / 2));
-  background: #f5f5f7;
+  background:
+    radial-gradient(ellipse at 82% 45%, rgba(255,255,255,.055), transparent 38%),
+    linear-gradient(135deg, #090909 0%, #111 55%, #171717 100%);
 }
 
-.hero-content {
-  max-width: 570px;
-}
+.hero-content { max-width: 570px; }
 
 .hero-label {
   display: block;
   margin-bottom: 22px;
-  color: #888;
+  color: #a5a5a5;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 2.5px;
@@ -38,7 +37,7 @@ main {
 
 .hero-content h1 {
   margin: 0;
-  color: #171717;
+  color: #f5f5f5;
   font-size: clamp(42px, 5vw, 68px);
   font-weight: 600;
   line-height: 1.04;
@@ -48,7 +47,7 @@ main {
 .hero-content > p {
   max-width: 440px;
   margin-top: 24px;
-  color: #777;
+  color: #a3a3a3;
   font-size: 15px;
   line-height: 1.8;
 }
@@ -68,7 +67,7 @@ main {
   align-items: center;
   justify-content: center;
   padding: 0 21px;
-  border: 1px solid #171717;
+  border: 1px solid #d8d8d8;
   border-radius: 30px;
   font-size: 12px;
   font-weight: 500;
@@ -76,29 +75,30 @@ main {
 }
 
 .button-primary {
-  background: #171717;
-  color: #fff;
+  background: #f2f2f2;
+  color: #111;
 }
 
 .button-primary:hover {
-  background: #444;
-  border-color: #444;
+  background: #cfcfcf;
+  border-color: #cfcfcf;
   transform: translateY(-2px);
 }
 
 .button-secondary {
   background: transparent;
-  color: #171717;
+  border-color: #555;
+  color: #eee;
 }
 
 .button-secondary:hover {
-  background: #171717;
-  color: #fff;
+  background: #f2f2f2;
+  border-color: #f2f2f2;
+  color: #111;
   transform: translateY(-2px);
 }
 
 /* PAINEL VISUAL */
-
 .hero-visual {
   position: relative;
   display: flex;
@@ -111,12 +111,12 @@ main {
   justify-self: end;
   overflow: hidden;
   isolation: isolate;
-  border: 1px solid #343434;
+  border: 1px solid #3a3a3a;
   border-radius: 24px;
   background:
-    radial-gradient(circle at 50% 45%, rgba(255,255,255,.13), transparent 38%),
-    linear-gradient(145deg, #292929, #111 65%, #080808);
-  box-shadow: 0 25px 60px rgba(0,0,0,.13);
+    radial-gradient(circle at 50% 45%, rgba(255,255,255,.16), transparent 38%),
+    linear-gradient(145deg, #303030, #151515 65%, #090909);
+  box-shadow: 0 25px 60px rgba(0,0,0,.38);
   text-align: center;
 }
 
@@ -124,25 +124,21 @@ main {
 .hero-visual::after {
   position: absolute;
   z-index: -1;
-  border: 1px solid rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.12);
   border-radius: 50%;
   content: "";
 }
 
-.hero-visual::before {
-  width: 280px;
-  height: 280px;
-}
-
+.hero-visual::before { width: 280px; height: 280px; }
 .hero-visual::after {
   width: 340px;
   height: 340px;
-  border-color: rgba(255,255,255,.06);
+  border-color: rgba(255,255,255,.07);
 }
 
 .hero-visual span {
   padding-left: 12px;
-  color: #fff;
+  color: #f7f7f7;
   font-size: 38px;
   font-weight: 500;
   letter-spacing: 12px;
@@ -156,23 +152,18 @@ main {
   text-transform: uppercase;
 }
 
-/* =====================================
-   EXPLORE — NOVA EXPERIÊNCIA EDITORIAL
-===================================== */
-
+/* EXPLORAR */
 .categories {
   width: calc(100% - 64px);
   max-width: 1200px;
   margin: 110px auto 0;
 }
 
-.section-heading {
-  margin-bottom: 42px;
-}
+.section-heading { margin-bottom: 42px; }
 
 .section-heading > span {
   display: block;
-  color: #999;
+  color: #929292;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 3px;
@@ -180,14 +171,12 @@ main {
 
 .section-heading h2 {
   margin-top: 13px;
-  color: #171717;
+  color: #f1f1f1;
   font-size: clamp(32px, 3.7vw, 44px);
   font-weight: 600;
   letter-spacing: -2.3px;
   line-height: 1.08;
 }
-
-/* GRADE */
 
 .category-grid {
   display: grid;
@@ -195,8 +184,6 @@ main {
   gap: 18px;
   align-items: stretch;
 }
-
-/* BASE DOS CARDS */
 
 .category-card {
   position: relative;
@@ -208,29 +195,22 @@ main {
   overflow: hidden;
   isolation: isolate;
   padding: 30px;
-  border: 1px solid transparent;
+  border: 1px solid #303030;
   border-radius: 5px;
-  background: #fff;
-  color: #171717;
+  background: #171717;
+  color: #f2f2f2;
   text-decoration: none;
-  transition:
-    transform .4s ease,
-    box-shadow .4s ease,
-    background .4s ease;
+  transition: transform .4s ease, box-shadow .4s ease, background .4s ease;
 }
-
-/* NUMERAÇÃO */
 
 .category-number {
   position: relative;
   z-index: 3;
-  color: #777;
+  color: #929292;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 2.5px;
 }
-
-/* CONTEÚDO */
 
 .category-info {
   position: relative;
@@ -242,7 +222,7 @@ main {
 
 .category-info h3 {
   margin: 0;
-  color: #171717;
+  color: #f3f3f3;
   font-size: 29px;
   font-weight: 600;
   letter-spacing: -1.5px;
@@ -253,12 +233,10 @@ main {
 .category-info p {
   max-width: 230px;
   margin: 0;
-  color: #777;
+  color: #a5a5a5;
   font-size: 12px;
   line-height: 1.7;
 }
-
-/* SETA */
 
 .category-arrow {
   position: absolute;
@@ -270,115 +248,90 @@ main {
   height: 39px;
   align-items: center;
   justify-content: center;
-  border: 1px solid #dcdcdc;
+  border: 1px solid #555;
   border-radius: 50%;
-  background: transparent;
-  color: #222;
+  background: rgba(255,255,255,.025);
+  color: #eee;
   font-family: Arial, sans-serif;
   font-size: 18px;
   font-weight: 400;
   line-height: 1;
-  transition:
-    background .35s ease,
-    color .35s ease,
-    transform .35s ease,
-    border-color .35s ease;
+  transition: background .35s ease, color .35s ease, transform .35s ease, border-color .35s ease;
 }
 
-/* =====================================
-   CARD 01 — IPHONES
-   BRANCO / CÍRCULO MONUMENTAL
-===================================== */
-
+/* CARD 01 — IPHONES */
 .category-card:nth-child(1) {
-  background: #f7f7f7;
-  border-color: #ededed;
+  background: linear-gradient(145deg, #242424, #151515 75%);
+  border-color: #383838;
+}
+
+.category-card:nth-child(1)::before,
+.category-card:nth-child(1)::after {
+  position: absolute;
+  z-index: 0;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 50%;
+  content: "";
+  transition: transform .7s ease;
 }
 
 .category-card:nth-child(1)::before {
-  position: absolute;
-  z-index: 0;
   top: 48px;
   right: -95px;
   width: 290px;
   height: 290px;
-  border: 1px solid rgba(0,0,0,.13);
-  border-radius: 50%;
-  content: "";
-  transition: transform .7s ease;
 }
 
 .category-card:nth-child(1)::after {
-  position: absolute;
-  z-index: 0;
   top: 88px;
   right: -55px;
   width: 210px;
   height: 210px;
-  border: 1px solid rgba(0,0,0,.09);
-  border-radius: 50%;
-  content: "";
-  transition: transform .7s ease;
+  border-color: rgba(255,255,255,.07);
 }
 
-.category-card:nth-child(1) .category-number {
-  color: #777;
-}
-
-.category-card:nth-child(1) .category-info {
-  padding-bottom: 5px;
-}
+.category-card:nth-child(1) .category-number { color: #aaa; }
+.category-card:nth-child(1) .category-info { padding-bottom: 5px; }
 
 .category-card:nth-child(1) .category-info h3 {
   font-size: 34px;
   letter-spacing: -2px;
 }
 
-/* =====================================
-   CARD 02 — ACESSÓRIOS
-   CINZA / COMPOSIÇÃO DIAGONAL
-===================================== */
-
+/* CARD 02 — ACESSÓRIOS */
 .category-card:nth-child(2) {
-  background: #e9e9e9;
-  border-color: #e9e9e9;
+  background: linear-gradient(145deg, #303030, #1b1b1b 78%);
+  border-color: #414141;
+}
+
+.category-card:nth-child(2)::before,
+.category-card:nth-child(2)::after {
+  position: absolute;
+  z-index: 0;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 3px;
+  content: "";
+  transform: rotate(38deg);
+  transition: transform .7s ease;
 }
 
 .category-card:nth-child(2)::before {
-  position: absolute;
-  z-index: 0;
   top: 65px;
   right: -55px;
   width: 205px;
   height: 205px;
-  border: 1px solid rgba(0,0,0,.15);
-  border-radius: 3px;
-  content: "";
-  transform: rotate(38deg);
-  transition: transform .7s ease;
 }
 
 .category-card:nth-child(2)::after {
-  position: absolute;
-  z-index: 0;
   top: 105px;
   right: -15px;
   width: 125px;
   height: 125px;
-  border: 1px solid rgba(0,0,0,.11);
-  border-radius: 3px;
-  content: "";
-  transform: rotate(38deg);
-  transition: transform .7s ease;
+  border-color: rgba(255,255,255,.08);
 }
 
-.category-card:nth-child(2) .category-number {
-  color: #686868;
-}
-
-.category-card:nth-child(2) .category-info {
-  max-width: 190px;
-}
+.category-card:nth-child(2) .category-number { color: #b5b5b5; }
+.category-card:nth-child(2) .category-info { max-width: 190px; }
 
 .category-card:nth-child(2) .category-info h3 {
   max-width: 170px;
@@ -386,47 +339,39 @@ main {
   line-height: 1.02;
 }
 
-/* =====================================
-   CARD 03 — RADAR TECH
-   PRETO / CÍRCULOS CONCÊNTRICOS
-===================================== */
-
+/* CARD 03 — RADAR TECH */
 .category-card:nth-child(3) {
-  background:
-    radial-gradient(circle at 80% 35%, #303030 0%, #191919 48%, #111 100%);
-  border-color: #191919;
+  background: radial-gradient(circle at 80% 35%, #343434 0%, #1b1b1b 48%, #101010 100%);
+  border-color: #333;
   color: #fff;
 }
 
-.category-card:nth-child(3)::before {
+.category-card:nth-child(3)::before,
+.category-card:nth-child(3)::after {
   position: absolute;
   z-index: 0;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 50%;
+  content: "";
+  transition: transform .7s ease;
+}
+
+.category-card:nth-child(3)::before {
   top: 42px;
   right: -105px;
   width: 300px;
   height: 300px;
-  border: 1px solid rgba(255,255,255,.23);
-  border-radius: 50%;
-  content: "";
-  transition: transform .7s ease;
 }
 
 .category-card:nth-child(3)::after {
-  position: absolute;
-  z-index: 0;
   top: 88px;
   right: -58px;
   width: 205px;
   height: 205px;
-  border: 1px solid rgba(255,255,255,.14);
-  border-radius: 50%;
-  content: "";
-  transition: transform .7s ease;
+  border-color: rgba(255,255,255,.1);
 }
 
-.category-card:nth-child(3) .category-number {
-  color: #bcbcbc;
-}
+.category-card:nth-child(3) .category-number { color: #bcbcbc; }
 
 .category-card:nth-child(3) .category-info h3 {
   max-width: 190px;
@@ -435,71 +380,43 @@ main {
   letter-spacing: -1.7px;
 }
 
-.category-card:nth-child(3) .category-info p {
-  color: #b5b5b5;
-}
+.category-card:nth-child(3) .category-info p { color: #b5b5b5; }
+.category-card:nth-child(3) .category-arrow { border-color: #666; color: #fff; }
 
-.category-card:nth-child(3) .category-arrow {
-  border-color: #666;
-  color: #fff;
-}
-
-/* =====================================
-   INTERAÇÕES
-===================================== */
-
+/* INTERAÇÕES VISUAIS */
 @media (hover: hover) and (pointer: fine) {
   .category-card:hover {
     transform: translateY(-7px);
-    box-shadow: 0 22px 45px rgba(0,0,0,.09);
+    box-shadow: 0 22px 45px rgba(0,0,0,.32);
   }
 
   .category-card:nth-child(1):hover {
-    background: #fff;
+    background: linear-gradient(145deg, #2d2d2d, #191919 75%);
   }
 
-  .category-card:nth-child(1):hover::before {
-    transform: scale(1.1);
-  }
-
-  .category-card:nth-child(1):hover::after {
-    transform: scale(1.13);
-  }
+  .category-card:nth-child(1):hover::before { transform: scale(1.1); }
+  .category-card:nth-child(1):hover::after { transform: scale(1.13); }
 
   .category-card:nth-child(2):hover {
-    background: #dedede;
+    background: linear-gradient(145deg, #393939, #202020 78%);
   }
 
-  .category-card:nth-child(2):hover::before {
-    transform: rotate(45deg) scale(1.08);
-  }
-
-  .category-card:nth-child(2):hover::after {
-    transform: rotate(45deg) scale(1.1);
-  }
+  .category-card:nth-child(2):hover::before { transform: rotate(45deg) scale(1.08); }
+  .category-card:nth-child(2):hover::after { transform: rotate(45deg) scale(1.1); }
 
   .category-card:nth-child(3):hover {
-    background:
-      radial-gradient(circle at 80% 35%, #393939 0%, #222 48%, #171717 100%);
+    background: radial-gradient(circle at 80% 35%, #414141 0%, #242424 48%, #171717 100%);
   }
 
-  .category-card:nth-child(3):hover::before {
-    transform: scale(1.1);
-  }
-
-  .category-card:nth-child(3):hover::after {
-    transform: scale(1.12);
-  }
-
-  .category-card:hover .category-info h3 {
-    transform: translateX(4px);
-  }
+  .category-card:nth-child(3):hover::before { transform: scale(1.1); }
+  .category-card:nth-child(3):hover::after { transform: scale(1.12); }
+  .category-card:hover .category-info h3 { transform: translateX(4px); }
 
   .category-card:hover .category-arrow {
     transform: translate(3px, -3px);
-    border-color: #171717;
-    background: #171717;
-    color: #fff;
+    border-color: #eee;
+    background: #eee;
+    color: #111;
   }
 
   .category-card:nth-child(3):hover .category-arrow {
@@ -509,10 +426,7 @@ main {
   }
 }
 
-/* =====================================
-   CURADORIA ILUME
-===================================== */
-
+/* CURADORIA ILUME */
 .featured {
   position: relative;
   display: flex;
@@ -525,7 +439,7 @@ main {
   padding: 65px 24px;
   background:
     radial-gradient(circle at 50% 0%, #383838 0%, transparent 55%),
-    #171717;
+    linear-gradient(135deg, #111, #080808);
   text-align: center;
 }
 
@@ -539,15 +453,8 @@ main {
   content: "";
 }
 
-.featured::before {
-  left: -120px;
-  bottom: -130px;
-}
-
-.featured::after {
-  right: -120px;
-  top: -130px;
-}
+.featured::before { left: -120px; bottom: -130px; }
+.featured::after { right: -120px; top: -130px; }
 
 .featured > span {
   color: #aaa;
@@ -559,7 +466,7 @@ main {
 .featured h2 {
   max-width: 650px;
   margin-top: 17px;
-  color: #fff;
+  color: #f5f5f5;
   font-size: clamp(25px, 3vw, 36px);
   font-weight: 500;
   letter-spacing: -1.3px;
@@ -568,15 +475,12 @@ main {
 .featured p {
   max-width: 490px;
   margin-top: 15px;
-  color: #b5b5b5;
+  color: #aaa;
   font-size: 13px;
   line-height: 1.8;
 }
 
-/* =====================================
-   RODAPÉ
-===================================== */
-
+/* RODAPÉ */
 .footer {
   display: flex;
   min-height: 210px;
@@ -584,13 +488,13 @@ main {
   justify-content: center;
   flex-direction: column;
   padding: 38px 20px;
-  border-top: 1px solid #eee;
-  background: #fff;
+  border-top: 1px solid #292929;
+  background: #090909;
   text-align: center;
 }
 
 .footer > span {
-  color: #171717;
+  color: #f2f2f2;
   font-size: 20px;
   font-weight: 600;
   letter-spacing: 6px;
@@ -598,11 +502,9 @@ main {
 
 .footer p {
   margin-top: 10px;
-  color: #777;
+  color: #999;
   font-size: 11px;
 }
-
-/* SELO DE 10 ANOS */
 
 .footer-anniversary {
   display: flex;
@@ -611,13 +513,13 @@ main {
   gap: 11px;
   margin-top: 24px;
   padding: 13px 20px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid #333;
   border-radius: 8px;
-  background: #fff;
+  background: #141414;
 }
 
 .footer-anniversary > strong {
-  color: #171717;
+  color: #eee;
   font-size: 32px;
   font-weight: 600;
   letter-spacing: -2px;
@@ -632,7 +534,7 @@ main {
 }
 
 .footer-anniversary div span {
-  color: #555;
+  color: #aaa;
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 1.2px;
@@ -641,61 +543,26 @@ main {
 
 .footer small {
   margin-top: 22px;
-  color: #999;
+  color: #777;
   font-size: 10px;
   letter-spacing: .4px;
 }
 
-/* =====================================
-   TABLETS
-===================================== */
-
+/* TABLETS */
 @media (max-width: 900px) {
-  .hero {
-    gap: 35px;
-    padding: 65px 6%;
-  }
-
-  .hero-content h1 {
-    font-size: 48px;
-  }
-
-  .hero-visual {
-    max-width: 340px;
-    min-height: 310px;
-  }
-
-  .categories {
-    width: calc(100% - 48px);
-  }
-
-  .category-grid {
-    gap: 12px;
-  }
-
-  .category-card {
-    min-height: 300px;
-    padding: 22px;
-  }
-
-  .category-info h3 {
-    font-size: 23px;
-  }
-
-  .category-card:nth-child(1) .category-info h3 {
-    font-size: 27px;
-  }
-
+  .hero { gap: 35px; padding: 65px 6%; }
+  .hero-content h1 { font-size: 48px; }
+  .hero-visual { max-width: 340px; min-height: 310px; }
+  .categories { width: calc(100% - 48px); }
+  .category-grid { gap: 12px; }
+  .category-card { min-height: 300px; padding: 22px; }
+  .category-info h3 { font-size: 23px; }
+  .category-card:nth-child(1) .category-info h3 { font-size: 27px; }
   .category-card:nth-child(2) .category-info h3,
-  .category-card:nth-child(3) .category-info h3 {
-    font-size: 25px;
-  }
+  .category-card:nth-child(3) .category-info h3 { font-size: 25px; }
 }
 
-/* =====================================
-   CELULARES
-===================================== */
-
+/* CELULARES */
 @media (max-width: 600px) {
   .hero {
     grid-template-columns: 1fr;
@@ -704,24 +571,15 @@ main {
     padding: 65px 24px 55px;
   }
 
-  .hero-content {
-    max-width: 100%;
-  }
+  .hero-content { max-width: 100%; }
 
   .hero-content h1 {
     font-size: clamp(42px, 11vw, 54px);
     letter-spacing: -2.5px;
   }
 
-  .hero-content > p {
-    margin-top: 18px;
-    font-size: 14px;
-  }
-
-  .hero-actions {
-    gap: 10px;
-    margin-top: 24px;
-  }
+  .hero-content > p { margin-top: 18px; font-size: 14px; }
+  .hero-actions { gap: 10px; margin-top: 24px; }
 
   .button-primary,
   .button-secondary {
@@ -738,27 +596,15 @@ main {
     border-radius: 20px;
   }
 
-  .hero-visual span {
-    padding-left: 9px;
-    font-size: 31px;
-    letter-spacing: 9px;
-  }
-
-  /* EXPLORE MOBILE */
+  .hero-visual span { padding-left: 9px; font-size: 31px; letter-spacing: 9px; }
 
   .categories {
     width: calc(100% - 40px);
     margin-top: 70px;
   }
 
-  .section-heading {
-    margin-bottom: 30px;
-  }
-
-  .section-heading > span {
-    font-size: 9px;
-    letter-spacing: 2.6px;
-  }
+  .section-heading { margin-bottom: 30px; }
+  .section-heading > span { font-size: 9px; letter-spacing: 2.6px; }
 
   .section-heading h2 {
     max-width: 340px;
@@ -768,10 +614,7 @@ main {
     line-height: 1.15;
   }
 
-  .category-grid {
-    grid-template-columns: 1fr;
-    gap: 14px;
-  }
+  .category-grid { grid-template-columns: 1fr; gap: 14px; }
 
   .category-card {
     min-height: 225px;
@@ -779,64 +622,33 @@ main {
     border-radius: 5px;
   }
 
-  /* IPHONES MOBILE */
-
   .category-card:nth-child(1)::before {
-    top: 15px;
-    right: -70px;
-    width: 245px;
-    height: 245px;
+    top: 15px; right: -70px; width: 245px; height: 245px;
   }
 
   .category-card:nth-child(1)::after {
-    top: 50px;
-    right: -35px;
-    width: 175px;
-    height: 175px;
+    top: 50px; right: -35px; width: 175px; height: 175px;
   }
 
-  .category-card:nth-child(1) .category-info h3 {
-    font-size: 31px;
-  }
-
-  /* ACESSÓRIOS MOBILE */
+  .category-card:nth-child(1) .category-info h3 { font-size: 31px; }
 
   .category-card:nth-child(2)::before {
-    top: 25px;
-    right: -45px;
-    width: 175px;
-    height: 175px;
+    top: 25px; right: -45px; width: 175px; height: 175px;
   }
 
   .category-card:nth-child(2)::after {
-    top: 60px;
-    right: -5px;
-    width: 105px;
-    height: 105px;
+    top: 60px; right: -5px; width: 105px; height: 105px;
   }
 
-  .category-card:nth-child(2) .category-info {
-    max-width: 200px;
-  }
-
-  .category-card:nth-child(2) .category-info h3 {
-    font-size: 29px;
-  }
-
-  /* RADAR TECH MOBILE */
+  .category-card:nth-child(2) .category-info { max-width: 200px; }
+  .category-card:nth-child(2) .category-info h3 { font-size: 29px; }
 
   .category-card:nth-child(3)::before {
-    top: 10px;
-    right: -75px;
-    width: 250px;
-    height: 250px;
+    top: 10px; right: -75px; width: 250px; height: 250px;
   }
 
   .category-card:nth-child(3)::after {
-    top: 45px;
-    right: -40px;
-    width: 180px;
-    height: 180px;
+    top: 45px; right: -40px; width: 180px; height: 180px;
   }
 
   .category-card:nth-child(3) .category-info h3 {
@@ -844,26 +656,12 @@ main {
     font-size: 31px;
   }
 
-  /* ELEMENTOS COMPARTILHADOS */
-
-  .category-number {
-    font-size: 10px;
-  }
-
-  .category-info {
-    gap: 8px;
-  }
-
-  .category-info p {
-    max-width: 260px;
-    font-size: 11px;
-  }
+  .category-number { font-size: 10px; }
+  .category-info { gap: 8px; }
+  .category-info p { max-width: 260px; font-size: 11px; }
 
   .category-arrow {
-    top: 20px;
-    right: 20px;
-    width: 35px;
-    height: 35px;
+    top: 20px; right: 20px; width: 35px; height: 35px;
   }
 
   .featured {
@@ -872,62 +670,24 @@ main {
     padding: 50px 24px;
   }
 
-  .featured h2 {
-    font-size: 26px;
-  }
-
-  .featured p {
-    font-size: 12px;
-  }
-
-  .footer {
-    min-height: 190px;
-    padding: 32px 18px;
-  }
-
-  .footer-anniversary {
-    margin-top: 21px;
-  }
+  .featured h2 { font-size: 26px; }
+  .featured p { font-size: 12px; }
+  .footer { min-height: 190px; padding: 32px 18px; }
+  .footer-anniversary { margin-top: 21px; }
 }
 
-/* =====================================
-   TELAS MUITO PEQUENAS
-===================================== */
-
+/* TELAS MUITO PEQUENAS */
 @media (max-width: 360px) {
-  .hero {
-    padding-right: 18px;
-    padding-left: 18px;
-  }
-
-  .hero-content h1 {
-    font-size: 39px;
-  }
-
-  .hero-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
+  .hero { padding-right: 18px; padding-left: 18px; }
+  .hero-content h1 { font-size: 39px; }
+  .hero-actions { align-items: stretch; flex-direction: column; }
 
   .button-primary,
-  .button-secondary {
-    width: 100%;
-  }
+  .button-secondary { width: 100%; }
 
-  .categories {
-    width: calc(100% - 28px);
-  }
-
-  .category-card {
-    min-height: 210px;
-    padding: 20px;
-  }
-
-  .category-info h3 {
-    font-size: 23px;
-  }
-
-  .category-info p {
-    font-size: 10px;
-  }
+  .categories { width: calc(100% - 28px); }
+  .category-card { min-height: 210px; padding: 20px; }
+  .category-info h3 { font-size: 23px; }
+  .category-info p { font-size: 10px; }
 }
+

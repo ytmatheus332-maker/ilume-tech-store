@@ -1,7 +1,7 @@
 
 /* =========================================
    ILUME TECH STORE
-   PRODUCTS — PREMIUM SHOWCASE 2.0
+   PRODUCTS — BLACK & GOLD PREMIUM
 ========================================= */
 
 .products {
@@ -36,7 +36,7 @@
 
 .products-heading > div:first-child > span {
   display: block;
-  color: #999;
+  color: #c6a56a;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 2.5px;
@@ -44,7 +44,7 @@
 
 .products-heading h2 {
   margin: 14px 0 0;
-  color: #171717;
+  color: #f5f5f5;
   font-size: 36px;
   font-weight: 600;
   letter-spacing: -1.6px;
@@ -53,7 +53,7 @@
 
 .products-heading p {
   margin: 12px 0 0;
-  color: #858585;
+  color: #a5a5aa;
   font-size: 14px;
   line-height: 1.7;
 }
@@ -65,7 +65,7 @@
   align-items: center;
   gap: 13px;
   padding: 8px 0 8px 18px;
-  border-left: 1px solid #dedede;
+  border-left: 1px solid #403522;
   background: transparent;
 }
 
@@ -75,9 +75,9 @@
   height: 38px;
   align-items: center;
   justify-content: center;
-  border: 1px solid #dedede;
+  border: 1px solid #806b46;
   border-radius: 50%;
-  color: #171717;
+  color: #d8b77a;
   font-size: 20px;
   font-weight: 400;
   letter-spacing: -1px;
@@ -90,14 +90,14 @@
 }
 
 .products-signature strong {
-  color: #222;
+  color: #e2c995;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 1.5px;
 }
 
 .products-signature > div span {
-  color: #999;
+  color: #92949b;
   font-size: 8px;
   font-weight: 500;
   letter-spacing: 1.2px;
@@ -111,7 +111,7 @@
   gap: 28px;
   width: 100%;
   margin: 0 0 28px;
-  border-bottom: 1px solid #eaeaea;
+  border-bottom: 1px solid #292a2f;
 }
 
 .products-tab {
@@ -119,7 +119,7 @@
   padding: 0 0 14px;
   border: 0;
   background: transparent;
-  color: #999;
+  color: #92949b;
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
@@ -128,11 +128,11 @@
 }
 
 .products-tab:hover {
-  color: #171717;
+  color: #e2c995;
 }
 
 .products-tab.active {
-  color: #171717;
+  color: #d8b77a;
   font-weight: 600;
 }
 
@@ -142,7 +142,7 @@
   bottom: -1px;
   left: 0;
   height: 2px;
-  background: #171717;
+  background: #c6a56a;
   content: "";
 }
 
@@ -150,13 +150,14 @@
 
 .products-message {
   padding: 35px 20px;
-  color: #777;
+  color: #a5a5aa;
   font-size: 13px;
   text-align: center;
 }
 
 .products-message p {
   margin-top: 10px;
+  color: #a5a5aa;
 }
 
 /* GRADE */
@@ -177,9 +178,9 @@
   height: 100%;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid #eaeaea;
+  border: 1px solid #292a2f;
   border-radius: 19px;
-  background: #fff;
+  background: #141519;
   transition:
     transform 0.3s ease,
     box-shadow 0.3s ease,
@@ -188,8 +189,8 @@
 
 .product-card:hover {
   transform: translateY(-4px);
-  border-color: #dcdcdc;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.065);
+  border-color: #806b46;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
 }
 
 /* ÁREA DA IMAGEM */
@@ -206,8 +207,8 @@
   padding: 24px;
   background: linear-gradient(
     145deg,
-    #fafafa 0%,
-    #f1f1f1 100%
+    #202126 0%,
+    #111216 100%
   );
 }
 
@@ -246,10 +247,10 @@
   align-items: center;
   padding: 7px 11px;
   overflow: hidden;
-  border: 1px solid rgba(220, 220, 220, 0.85);
+  border: 1px solid #51452f;
   border-radius: 30px;
-  background: rgba(255, 255, 255, 0.94);
-  color: #444;
+  background: rgba(25, 25, 27, 0.96);
+  color: #e2c995;
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.8px;
@@ -261,25 +262,25 @@
 /* DESTAQUE */
 
 .product-badge--featured {
-  background: #171717;
-  border-color: #171717;
-  color: #fff;
+  background: #c6a56a;
+  border-color: #c6a56a;
+  color: #111216;
 }
 
 /* BLACK FRIDAY */
 
 .product-badge--black_friday {
-  background: #171717;
-  border-color: #171717;
-  color: #fff;
+  background: #25211a;
+  border-color: #806b46;
+  color: #e2c995;
 }
 
 /* PROMOÇÃO */
 
 .product-badge--promotion {
-  background: #f5f0e6;
-  border-color: #e8ddc8;
-  color: #725b34;
+  background: #302719;
+  border-color: #806b46;
+  color: #e2c995;
 }
 
 /* INFORMAÇÕES */
@@ -294,7 +295,7 @@
 
 .product-info h3 {
   margin: 0;
-  color: #171717;
+  color: #f5f5f5;
   font-size: 19px;
   font-weight: 600;
   letter-spacing: -0.5px;
@@ -304,7 +305,7 @@
 .product-description {
   min-height: 62px;
   margin: 9px 0 0;
-  color: #858585;
+  color: #a5a5aa;
   font-size: 12px;
   line-height: 1.7;
 }
@@ -322,7 +323,7 @@
 
 .product-price strong {
   display: block;
-  color: #171717;
+  color: #e2c995;
   font-size: 21px;
   font-weight: 600;
   letter-spacing: -0.7px;
@@ -330,13 +331,13 @@
 }
 
 .product-price-original {
-  color: #999;
+  color: #92949b;
   font-size: 12px;
   text-decoration: line-through;
 }
 
 .product-price-label {
-  color: #8b754f;
+  color: #c6a56a;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.3px;
@@ -348,7 +349,7 @@
   display: block;
   margin-top: auto;
   padding-top: 18px;
-  color: #777;
+  color: #a5a5aa;
   font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.5px;
@@ -364,10 +365,10 @@
   justify-content: center;
   margin-top: 19px;
   padding: 13px 17px;
-  border: 1px solid #171717;
+  border: 1px solid #c6a56a;
   border-radius: 30px;
-  background: #171717;
-  color: #fff;
+  background: #c6a56a;
+  color: #111216;
   font-family: inherit;
   font-size: 11px;
   font-weight: 600;
@@ -382,9 +383,9 @@
 }
 
 .product-button:hover {
-  border-color: #333;
-  background: #fff;
-  color: #171717;
+  border-color: #e2c995;
+  background: #e2c995;
+  color: #08090b;
 }
 
 .product-button:active {
@@ -392,14 +393,14 @@
 }
 
 .product-button:focus-visible {
-  outline: 2px solid #171717;
+  outline: 2px solid #e2c995;
   outline-offset: 3px;
 }
 
 .product-button-disabled {
-  border-color: #dedede;
-  background: #858585;
-  color: #fff;
+  border-color: #45464c;
+  background: #45464c;
+  color: #d0d0d3;
   opacity: 0.75;
   cursor: not-allowed;
 }
