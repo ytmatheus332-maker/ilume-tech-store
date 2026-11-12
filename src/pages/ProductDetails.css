@@ -1,4 +1,3 @@
-
 /* =====================================
    ILUME TECH STORE
    PRODUCT DETAILS
@@ -383,6 +382,138 @@
   margin: 0 0 25px;
   font-size: 27px;
   font-weight: 500;
+}
+
+/* =====================================
+   ETIQUETA DE CAMPANHA
+===================================== */
+
+.product-campaign-badge {
+  display: inline-block;
+  margin-bottom: 16px;
+  padding: 6px 10px;
+  background: #a0834c;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+}
+
+/* =====================================
+   PREÇO ATUAL, PREÇO ANTERIOR E AVISOS
+===================================== */
+
+.product-details-price-block {
+  margin-bottom: 30px;
+}
+
+.product-details-compare-price {
+  display: block;
+  margin-bottom: 4px;
+  color: #999;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-decoration: line-through;
+}
+
+.product-details-unavailable {
+  color: #999;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.product-details-note {
+  margin: 9px 0 0;
+  color: #888;
+  font-size: 12px;
+}
+
+/* =====================================
+   SELEÇÃO DE VERSÃO (COR E ARMAZENAMENTO)
+===================================== */
+
+.product-variants {
+  width: 100%;
+  margin-bottom: 26px;
+}
+
+.product-variants-label {
+  display: block;
+  margin-bottom: 10px;
+  color: #555;
+  font-size: 12px;
+}
+
+.product-variants-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.product-variant-option {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #e5e5e5;
+  background: #fff;
+  color: #444;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.product-variant-option:hover {
+  border-color: #171717;
+}
+
+.product-variant-option.is-selected {
+  border-color: #171717;
+  color: #171717;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px #171717;
+}
+
+.product-variant-option:focus-visible,
+.product-quantity button:focus-visible,
+.product-add-cart:focus-visible {
+  outline: 2px solid #a0834c;
+  outline-offset: 2px;
+}
+
+/* =====================================
+   ESTADOS DOS BOTÕES
+===================================== */
+
+.product-quantity button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.product-quantity button:disabled:hover {
+  background: #fff;
+}
+
+.product-add-cart:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.product-add-cart:disabled:hover {
+  background: #171717;
+  color: #fff;
+}
+
+.product-add-cart.is-added,
+.product-add-cart.is-added:hover {
+  border-color: #166534;
+  background: #166534;
+  color: #fff;
+}
+
+.product-retry {
+  max-width: 260px;
 }
 
 /* =====================================
