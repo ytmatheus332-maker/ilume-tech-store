@@ -1,12 +1,14 @@
 
 import {
   useEffect,
+  useMemo,
   useState,
   type FormEvent,
   type ChangeEvent,
 } from "react";
 
 import { supabase } from "../../lib/supabase";
+import "./AdminDashboard.css";
 
 import {
   X,
@@ -19,6 +21,16 @@ import {
   Trash2,
   Tag,
   Save,
+  Search,
+  Smartphone,
+  LayoutDashboard,
+  ChevronRight,
+  Eye,
+  Archive,
+  Layers,
+  Upload,
+  CircleDollarSign,
+  ExternalLink,
 } from "lucide-react";
 
 type CampaignType = "promotion" | "black_friday" | null;
@@ -96,10 +108,38 @@ export default function AdminDashboard() {
   const [color, setColor] = useState("");
   const [storage, setStorage] = useState("128");
   const [priceReais, setPriceReais] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  const publishedCount = useMemo(
+    () => products.filter((product) => product.status === "published").length,
+    [products]
+  );
+
+  const draftCount = useMemo(
+    () => products.filter((product) => product.status !== "published").length,
+    [products]
+  );
+
+  const featuredCount = useMemo(
+    () => products.filter((product) => product.is_featured).length,
+    [products]
+  );
+
+  const filteredProducts = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+
+    if (!term) return products;
+
+    return products.filter(
+      (product) =>
+        product.name.toLowerCase().includes(term) ||
+        product.slug.toLowerCase().includes(term)
+    );
+  }, [products, searchTerm]);
 
   useEffect(() => {
     fetchProducts();
@@ -108,20 +148,25 @@ export default function AdminDashboard() {
   async function fetchProducts() {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("products")
-      .select(
-        "id, name, slug, status, brand, is_featured, campaign_type, badge_label"
-      )
-      .order("name");
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select(
+          "id, name, slug, status, brand, is_featured, campaign_type, badge_label"
+        )
+        .order("name");
 
-    if (error) {
-      alert("Erro ao carregar catálogo: " + error.message);
-    } else {
+      if (error) throw error;
+
       setProducts((data || []) as ProductSummary[]);
-    }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erro desconhecido";
 
-    setLoading(false);
+      alert("Erro ao carregar catálogo: " + message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function fetchVariants(productId: string) {
@@ -542,8 +587,7 @@ export default function AdminDashboard() {
     if (!selectedProduct) return;
 
     const hasActiveVariant = variants.some(
-      (variant) =>
-        variant.is_active && variant.price_cents !== null
+      (variant) => variant.is_active && variant.price_cents !== null
     );
 
     if (!hasActiveVariant) {
@@ -564,17 +608,17 @@ export default function AdminDashboard() {
 
     setSaving(true);
 
-    const { error } = await supabase
-      .from("products")
-      .update({
-        status: "published",
-        published_at: new Date().toISOString(),
-      })
-      .eq("id", selectedProduct.id);
+    try {
+      const { error } = await supabase
+        .from("products")
+        .update({
+          status: "published",
+          published_at: new Date().toISOString(),
+        })
+        .eq("id", selectedProduct.id);
 
-    if (error) {
-      alert("Erro ao publicar produto: " + error.message);
-    } else {
+      if (error) throw error;
+
       alert("Produto publicado com sucesso!");
 
       setSelectedProduct({
@@ -583,531 +627,713 @@ export default function AdminDashboard() {
       });
 
       await fetchProducts();
+    } catch (error) {
+      alert(
+        "Erro ao publicar produto: " +
+          (error instanceof Error ? error.message : "Erro desconhecido")
+      );
+    } finally {
+      setSaving(false);
     }
+  }
 
-    setSaving(false);
+  function closeProduct() {
+    setSelectedProduct(null);
+    setVariants([]);
+    setImages([]);
   }
 
   return (
-    <main
-      style={{
-        padding: "2rem",
-        fontFamily: "sans-serif",
-        maxWidth: "1200px",
-        margin: "0 auto",
-      }}
-    >
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "1rem",
-        }}
-      >
-        <h1>ILUME CENTRAL</h1>
-
-        <button onClick={fetchProducts} disabled={loading}>
-          <RefreshCcw size={16} />
-        </button>
-      </header>
-
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: selectedProduct
-            ? "minmax(0, 1fr) minmax(0, 400px)"
-            : "1fr",
-          gap: "2rem",
-          marginTop: "2rem",
-          alignItems: "start",
-        }}
-      >
-        <div
-          style={{
-            border: "1px solid #ddd",
-            borderRadius: "8px",
-            padding: "1rem",
-            minWidth: 0,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "1rem",
-            }}
-          >
-            <h3>Catálogo</h3>
-
-            <button
-              onClick={handleCreateModels}
-              disabled={saving}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "10px",
-                background: "#111",
-                color: "#fff",
-                border: "none",
-                borderRadius: "5px",
-                cursor: "pointer",
-              }}
-            >
-              <Plus size={16} />
-              Cadastrar 11 modelos
-            </button>
+    <main className="ilume-admin">
+      <aside className="admin-sidebar">
+        <div className="admin-brand">
+          <div className="admin-brand-mark">I.</div>
+          <div>
+            <strong>ILUME</strong>
+            <span>CENTRAL</span>
           </div>
-
-          {products.map((product) => (
-            <div
-              key={product.id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: "10px",
-                padding: "12px 0",
-                borderBottom: "1px solid #eee",
-              }}
-            >
-              <div>
-                <strong>{product.name}</strong>
-
-                <div style={{ fontSize: "12px", color: "#777" }}>
-                  {product.status === "published"
-                    ? "Publicado"
-                    : "Rascunho"}
-
-                  {product.is_featured && " • Destaque"}
-
-                  {product.campaign_type === "promotion" &&
-                    " • Promoção"}
-
-                  {product.campaign_type === "black_friday" &&
-                    " • Black Friday"}
-                </div>
-              </div>
-
-              <button onClick={() => handleOpenVariants(product)}>
-                Gerenciar
-              </button>
-            </div>
-          ))}
-
-          {products.length === 0 && !loading && (
-            <p>Nenhum produto encontrado.</p>
-          )}
         </div>
 
-        {selectedProduct && (
-          <div
-            style={{
-              border: "2px solid #111",
-              borderRadius: "8px",
-              padding: "1rem",
-              minWidth: 0,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
+        <div className="sidebar-label">WORKSPACE</div>
+
+        <nav className="sidebar-navigation">
+          <a href="#dashboard" className="sidebar-link active">
+            <LayoutDashboard size={18} />
+            <span>Visão geral</span>
+          </a>
+
+          <a href="#catalogo" className="sidebar-link">
+            <Smartphone size={18} />
+            <span>Catálogo</span>
+          </a>
+
+          <a href="#gerenciamento" className="sidebar-link">
+            <Package size={18} />
+            <span>Produtos</span>
+          </a>
+        </nav>
+
+        <div className="sidebar-divider" />
+
+        <div className="sidebar-label">SISTEMA</div>
+
+        <div className="sidebar-info">
+          <div className="sidebar-status-dot" />
+          <div>
+            <strong>Supabase</strong>
+            <span>Integração configurada</span>
+          </div>
+        </div>
+
+        <div className="sidebar-footer">
+          <span>ILUME TECH STORE</span>
+          <small>Central administrativa</small>
+          <small>© 2026 ILUME</small>
+        </div>
+      </aside>
+
+      <div className="admin-workspace">
+        <header className="admin-topbar">
+          <div className="topbar-breadcrumb">
+            <span>Workspace</span>
+            <ChevronRight size={14} />
+            <strong>Visão geral</strong>
+          </div>
+
+          <div className="topbar-actions">
+            <span className="admin-status">
+              <span className="status-dot" />
+              Ambiente administrativo
+            </span>
+
+            <button
+              className="icon-button"
+              onClick={fetchProducts}
+              disabled={loading}
+              title="Atualizar catálogo"
+              aria-label="Atualizar catálogo"
             >
-              <h2>{selectedProduct.name}</h2>
-
-              <button
-                onClick={() => {
-                  setSelectedProduct(null);
-                  setVariants([]);
-                  setImages([]);
-                }}
-              >
-                <X />
-              </button>
-            </div>
-
-            <hr style={{ margin: "1rem 0" }} />
-
-            <h3>
-              <Tag size={17} /> Personalização e campanhas
-            </h3>
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "14px",
-                margin: "1rem 0",
-              }}
-            >
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedProduct.is_featured}
-                  onChange={(event) =>
-                    handleCampaignChange(
-                      "is_featured",
-                      event.target.checked
-                    )
-                  }
-                />
-
-                <Star size={17} />
-
-                Produto em destaque
-              </label>
-
-              <label>
-                Campanha do produto
-
-                <select
-                  value={selectedProduct.campaign_type || ""}
-                  onChange={(event) =>
-                    handleCampaignChange(
-                      "campaign_type",
-                      (event.target.value || null) as CampaignType
-                    )
-                  }
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    padding: "10px",
-                    marginTop: "6px",
-                  }}
-                >
-                  <option value="">Nenhuma campanha</option>
-                  <option value="promotion">Promoção</option>
-                  <option value="black_friday">Black Friday</option>
-                </select>
-              </label>
-
-              <label>
-                Etiqueta personalizada
-
-                <input
-                  type="text"
-                  maxLength={40}
-                  placeholder="Ex: MAIS VENDIDO"
-                  value={selectedProduct.badge_label || ""}
-                  onChange={(event) =>
-                    handleCampaignChange(
-                      "badge_label",
-                      event.target.value
-                    )
-                  }
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    padding: "10px",
-                    marginTop: "6px",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </label>
-
-              <button
-                onClick={handleSaveCampaign}
-                disabled={saving}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                  width: "100%",
-                  padding: "12px",
-                  background: "#111",
-                  color: "#fff",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                <Save size={16} />
-                Salvar personalização
-              </button>
-            </div>
-
-            <hr style={{ margin: "1.5rem 0" }} />
-
-            <h3>Imagens do produto</h3>
-
-            <label
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "10px",
-                padding: "24px",
-                border: "2px dashed #aaa",
-                borderRadius: "8px",
-                cursor: uploading ? "wait" : "pointer",
-                textAlign: "center",
-                marginBottom: "1rem",
-              }}
-            >
-              <ImagePlus size={30} />
-
-              <strong>
-                {uploading ? "Enviando imagem..." : "Adicionar foto"}
-              </strong>
-
-              <small>JPG, PNG ou WEBP — máximo 5 MB</small>
-
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={handleUploadImage}
-                disabled={uploading}
-                style={{ display: "none" }}
+              <RefreshCcw
+                size={17}
+                className={loading ? "is-spinning" : ""}
               />
-            </label>
+            </button>
+          </div>
+        </header>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: "10px",
-              }}
-            >
-              {images.map((image) => (
-                <div
-                  key={image.id}
-                  style={{
-                    border: image.is_primary
-                      ? "2px solid #166534"
-                      : "1px solid #ddd",
-                    borderRadius: "8px",
-                    padding: "6px",
-                    minWidth: 0,
-                  }}
-                >
-                  <img
-                    src={image.storage_path}
-                    alt={image.alt_text || selectedProduct.name}
-                    style={{
-                      width: "100%",
-                      aspectRatio: "1 / 1",
-                      objectFit: "contain",
-                      borderRadius: "5px",
-                    }}
-                  />
-
-                  {image.is_primary ? (
-                    <p
-                      style={{
-                        color: "#166534",
-                        fontSize: "12px",
-                        textAlign: "center",
-                      }}
-                    >
-                      <Star size={13} /> Imagem principal
-                    </p>
-                  ) : (
-                    <button
-                      onClick={() => handleSetPrimary(image)}
-                      disabled={saving}
-                      style={{
-                        width: "100%",
-                        marginTop: "6px",
-                        padding: "7px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Definir como principal
-                    </button>
-                  )}
-                </div>
-              ))}
+        <div className="admin-content">
+          <section className="admin-welcome" id="dashboard">
+            <div>
+              <span className="eyebrow">ILUME / ADMINISTRAÇÃO</span>
+              <h1>Visão geral</h1>
+              <p>
+                Gerencie seu catálogo, produtos, preços e campanhas em
+                um só lugar.
+              </p>
             </div>
 
-            {images.length === 0 && (
-              <p style={{ color: "#777", fontSize: "13px" }}>
-                Nenhuma foto cadastrada.
-              </p>
-            )}
+            <div className="welcome-mark">
+              <Layers size={26} />
+            </div>
+          </section>
 
-            <hr style={{ margin: "1.5rem 0" }} />
-
-            <h3>Variantes cadastradas</h3>
-
-            {variants.map((variant) => (
-              <div
-                key={variant.id}
-                style={{
-                  padding: "10px 0",
-                  borderBottom: "1px solid #eee",
-                }}
-              >
-                <strong>
-                  {variant.color || "Padrão"} —{" "}
-                  {variant.storage_gb
-                    ? `${variant.storage_gb} GB`
-                    : "Capacidade não definida"}
-                </strong>
-
-                <p style={{ margin: "5px 0" }}>
-                  {formatPrice(variant.price_cents)}
-                </p>
-
-                <small>{variant.sku}</small>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "8px",
-                    flexWrap: "wrap",
-                    marginTop: "8px",
-                  }}
-                >
-                  <button
-                    onClick={() => handleToggleVariant(variant)}
-                    disabled={saving}
-                    style={{
-                      padding: "6px 10px",
-                      background: variant.is_active ? "#166534" : "#555",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {variant.is_active ? "Desativar" : "Ativar"}
-                  </button>
-
-                  <button
-                    onClick={() => handleDeleteVariant(variant)}
-                    disabled={saving}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "5px",
-                      padding: "6px 10px",
-                      background: "#991b1b",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <Trash2 size={14} />
-                    Excluir
-                  </button>
+          <section className="admin-stats">
+            <article className="stat-card">
+              <div className="stat-card-top">
+                <span>Total de produtos</span>
+                <div className="stat-icon neutral">
+                  <Package size={19} />
                 </div>
               </div>
-            ))}
+              <strong>{products.length}</strong>
+              <small>Produtos no catálogo</small>
+            </article>
 
-            {variants.length === 0 && (
-              <p>Nenhuma variante cadastrada.</p>
-            )}
+            <article className="stat-card">
+              <div className="stat-card-top">
+                <span>Publicados</span>
+                <div className="stat-icon green">
+                  <CheckCircle size={19} />
+                </div>
+              </div>
+              <strong>{publishedCount}</strong>
+              <small>Disponíveis na loja</small>
+            </article>
 
-            <hr style={{ margin: "1.5rem 0" }} />
+            <article className="stat-card">
+              <div className="stat-card-top">
+                <span>Rascunhos</span>
+                <div className="stat-icon amber">
+                  <Archive size={19} />
+                </div>
+              </div>
+              <strong>{draftCount}</strong>
+              <small>Aguardando publicação</small>
+            </article>
 
-            <h3>Adicionar variante e preço</h3>
+            <article className="stat-card">
+              <div className="stat-card-top">
+                <span>Em destaque</span>
+                <div className="stat-icon purple">
+                  <Star size={19} />
+                </div>
+              </div>
+              <strong>{featuredCount}</strong>
+              <small>Produtos destacados</small>
+            </article>
+          </section>
 
-            <form
-              onSubmit={handleAddVariant}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "10px",
-                marginTop: "1rem",
-              }}
+          <section className="catalog-section" id="catalogo">
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow">GESTÃO DE PRODUTOS</span>
+                <h2>Catálogo</h2>
+                <p>Consulte e gerencie os produtos da ILUME.</p>
+              </div>
+
+              <button
+                className="primary-button"
+                onClick={handleCreateModels}
+                disabled={saving}
+              >
+                <Plus size={17} />
+                Cadastrar 11 modelos
+              </button>
+            </div>
+
+            <div className="catalog-toolbar">
+              <div className="search-box">
+                <Search size={17} />
+                <input
+                  type="search"
+                  placeholder="Buscar produto pelo nome..."
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                />
+              </div>
+
+              <span className="catalog-counter">
+                {filteredProducts.length} de {products.length} produtos
+              </span>
+            </div>
+
+            <div className="catalog-table-wrapper">
+              <table className="catalog-table">
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>Status</th>
+                    <th>Campanha</th>
+                    <th className="table-action-heading">Ação</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filteredProducts.map((product) => (
+                    <tr key={product.id}>
+                      <td>
+                        <div className="product-name-cell">
+                          <div className="product-avatar">
+                            <Smartphone size={20} />
+                          </div>
+
+                          <div>
+                            <strong>{product.name}</strong>
+                            <span>{product.slug}</span>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td>
+                        <span
+                          className={`status-badge ${
+                            product.status === "published"
+                              ? "published"
+                              : "draft"
+                          }`}
+                        >
+                          <span />
+                          {product.status === "published"
+                            ? "Publicado"
+                            : "Rascunho"}
+                        </span>
+                      </td>
+
+                      <td>
+                        <div className="campaign-cell">
+                          {product.is_featured && (
+                            <span className="mini-tag featured">
+                              <Star size={12} /> Destaque
+                            </span>
+                          )}
+
+                          {product.campaign_type === "promotion" && (
+                            <span className="mini-tag promotion">
+                              Promoção
+                            </span>
+                          )}
+
+                          {product.campaign_type === "black_friday" && (
+                            <span className="mini-tag black">
+                              Black Friday
+                            </span>
+                          )}
+
+                          {product.badge_label && (
+                            <span className="mini-tag custom">
+                              {product.badge_label}
+                            </span>
+                          )}
+
+                          {!product.is_featured &&
+                            !product.campaign_type &&
+                            !product.badge_label && (
+                              <span className="empty-campaign">
+                                Sem campanha
+                              </span>
+                            )}
+                        </div>
+                      </td>
+
+                      <td className="table-action-cell">
+                        <button
+                          className="manage-button"
+                          onClick={() => handleOpenVariants(product)}
+                        >
+                          Gerenciar
+                          <ChevronRight size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {filteredProducts.length === 0 && (
+                    <tr>
+                      <td colSpan={4}>
+                        <div className="empty-state">
+                          <Package size={30} />
+                          <strong>
+                            {loading
+                              ? "Carregando catálogo..."
+                              : "Nenhum produto encontrado"}
+                          </strong>
+                          <span>
+                            {searchTerm
+                              ? "Tente pesquisar por outro nome."
+                              : "Os produtos cadastrados aparecerão aqui."}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {selectedProduct && (
+            <section
+              className="management-section"
+              id="gerenciamento"
             >
-              <input
-                type="text"
-                placeholder="SKU"
-                value={sku}
-                onChange={(event) => setSku(event.target.value)}
-                required
-              />
+              <div className="management-heading">
+                <div>
+                  <span className="eyebrow">GERENCIAMENTO INDIVIDUAL</span>
+                  <h2>{selectedProduct.name}</h2>
+                  <p>Configurações, imagens, variantes e publicação.</p>
+                </div>
 
-              <input
-                type="text"
-                placeholder="Cor"
-                value={color}
-                onChange={(event) => setColor(event.target.value)}
-              />
+                <button
+                  className="icon-button close-button"
+                  onClick={closeProduct}
+                  aria-label="Fechar gerenciamento"
+                  title="Fechar"
+                >
+                  <X size={19} />
+                </button>
+              </div>
 
-              <label>Capacidade</label>
+              <div className="management-grid">
+                <div className="management-main">
+                  <article className="admin-panel">
+                    <div className="panel-heading">
+                      <div className="panel-icon">
+                        <Tag size={19} />
+                      </div>
+                      <div>
+                        <h3>Personalização e campanhas</h3>
+                        <p>Configure a apresentação comercial.</p>
+                      </div>
+                    </div>
 
-              <select
-                value={storage}
-                onChange={(event) => setStorage(event.target.value)}
-                required
-              >
-                <option value="64">64 GB</option>
-                <option value="128">128 GB</option>
-                <option value="256">256 GB</option>
-                <option value="512">512 GB</option>
-                <option value="1024">1 TB</option>
-                <option value="2048">2 TB</option>
-              </select>
+                    <div className="panel-content">
+                      <label className="toggle-field">
+                        <input
+                          type="checkbox"
+                          checked={selectedProduct.is_featured}
+                          onChange={(event) =>
+                            handleCampaignChange(
+                              "is_featured",
+                              event.target.checked
+                            )
+                          }
+                        />
 
-              <input
-                type="text"
-                inputMode="decimal"
-                placeholder="Preço (Ex: 5499.00)"
-                value={priceReais}
-                onChange={(event) =>
-                  setPriceReais(event.target.value)
-                }
-                required
-              />
+                        <span className="custom-checkbox">
+                          <CheckCircle size={13} />
+                        </span>
 
-              <button
-                type="submit"
-                disabled={saving}
-                style={{
-                  padding: "12px",
-                  background: "#000",
-                  color: "#fff",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                <Plus size={15} /> Salvar variante e preço
-              </button>
-            </form>
+                        <span>
+                          <strong>Produto em destaque</strong>
+                          <small>Destacar este produto na loja.</small>
+                        </span>
+                      </label>
 
-            <hr style={{ margin: "1.5rem 0" }} />
+                      <div className="form-field">
+                        <label htmlFor="campaign">Campanha do produto</label>
+                        <select
+                          id="campaign"
+                          value={selectedProduct.campaign_type || ""}
+                          onChange={(event) =>
+                            handleCampaignChange(
+                              "campaign_type",
+                              (event.target.value || null) as CampaignType
+                            )
+                          }
+                        >
+                          <option value="">Nenhuma campanha</option>
+                          <option value="promotion">Promoção</option>
+                          <option value="black_friday">Black Friday</option>
+                        </select>
+                      </div>
 
-            {selectedProduct.status !== "published" ? (
-              <button
-                onClick={handlePublishProduct}
-                disabled={saving}
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  background: "#166534",
-                  color: "#fff",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                <CheckCircle size={16} /> PUBLICAR PRODUTO
-              </button>
-            ) : (
-              <p style={{ color: "#166534" }}>
-                <Package size={16} /> Produto publicado
-              </p>
-            )}
-          </div>
-        )}
-      </section>
+                      <div className="form-field">
+                        <label htmlFor="badge">Etiqueta personalizada</label>
+                        <input
+                          id="badge"
+                          type="text"
+                          maxLength={40}
+                          placeholder="Ex: MAIS VENDIDO"
+                          value={selectedProduct.badge_label || ""}
+                          onChange={(event) =>
+                            handleCampaignChange(
+                              "badge_label",
+                              event.target.value
+                            )
+                          }
+                        />
+                        <small>Limite de 40 caracteres.</small>
+                      </div>
+
+                      <button
+                        className="primary-button full-button"
+                        onClick={handleSaveCampaign}
+                        disabled={saving}
+                      >
+                        <Save size={16} />
+                        Salvar personalização
+                      </button>
+                    </div>
+                  </article>
+
+                  <article className="admin-panel">
+                    <div className="panel-heading">
+                      <div className="panel-icon">
+                        <ImagePlus size={19} />
+                      </div>
+                      <div>
+                        <h3>Imagens do produto</h3>
+                        <p>Gerencie as imagens da vitrine.</p>
+                      </div>
+                    </div>
+
+                    <div className="panel-content">
+                      <label
+                        className={`upload-area ${
+                          uploading ? "uploading" : ""
+                        }`}
+                      >
+                        <div className="upload-icon">
+                          <Upload size={23} />
+                        </div>
+
+                        <strong>
+                          {uploading
+                            ? "Enviando imagem..."
+                            : "Adicionar imagem"}
+                        </strong>
+
+                        <span>Selecione uma imagem do seu dispositivo.</span>
+                        <small>JPG, PNG ou WEBP · Máximo 5 MB</small>
+
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={handleUploadImage}
+                          disabled={uploading}
+                          hidden
+                        />
+                      </label>
+
+                      <div className="image-grid">
+                        {images.map((image) => (
+                          <div
+                            key={image.id}
+                            className={`image-card ${
+                              image.is_primary ? "primary-image" : ""
+                            }`}
+                          >
+                            <div className="image-preview">
+                              <img
+                                src={image.storage_path}
+                                alt={
+                                  image.alt_text || selectedProduct.name
+                                }
+                              />
+
+                              {image.is_primary && (
+                                <span className="primary-image-label">
+                                  <Star size={12} />
+                                  Principal
+                                </span>
+                              )}
+                            </div>
+
+                            {!image.is_primary && (
+                              <button
+                                className="image-action"
+                                onClick={() => handleSetPrimary(image)}
+                                disabled={saving}
+                              >
+                                Definir como principal
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {images.length === 0 && (
+                        <div className="inline-empty">
+                          Nenhuma imagem cadastrada.
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                </div>
+
+                <div className="management-side">
+                  <article className="admin-panel">
+                    <div className="panel-heading">
+                      <div className="panel-icon">
+                        <Layers size={19} />
+                      </div>
+                      <div>
+                        <h3>Variantes cadastradas</h3>
+                        <p>Capacidades, cores e preços.</p>
+                      </div>
+                    </div>
+
+                    <div className="panel-content">
+                      <div className="variant-list">
+                        {variants.map((variant) => (
+                          <div className="variant-card" key={variant.id}>
+                            <div className="variant-top">
+                              <div>
+                                <strong>
+                                  {variant.color || "Padrão"}
+                                </strong>
+                                <span>
+                                  {variant.storage_gb
+                                    ? `${variant.storage_gb} GB`
+                                    : "Capacidade não definida"}
+                                </span>
+                              </div>
+
+                              <span
+                                className={`variant-status ${
+                                  variant.is_active ? "active" : "inactive"
+                                }`}
+                              >
+                                {variant.is_active ? "Ativa" : "Inativa"}
+                              </span>
+                            </div>
+
+                            <div className="variant-price">
+                              {formatPrice(variant.price_cents)}
+                            </div>
+
+                            <small className="variant-sku">
+                              SKU: {variant.sku}
+                            </small>
+
+                            <div className="variant-actions">
+                              <button
+                                className="secondary-button"
+                                onClick={() => handleToggleVariant(variant)}
+                                disabled={saving}
+                              >
+                                {variant.is_active ? "Desativar" : "Ativar"}
+                              </button>
+
+                              <button
+                                className="danger-button"
+                                onClick={() => handleDeleteVariant(variant)}
+                                disabled={saving}
+                                title="Excluir variante"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {variants.length === 0 && (
+                        <div className="inline-empty">
+                          Nenhuma variante cadastrada.
+                        </div>
+                      )}
+                    </div>
+                  </article>
+
+                  <article className="admin-panel">
+                    <div className="panel-heading">
+                      <div className="panel-icon">
+                        <CircleDollarSign size={19} />
+                      </div>
+                      <div>
+                        <h3>Adicionar variante</h3>
+                        <p>Cadastre uma nova opção de produto.</p>
+                      </div>
+                    </div>
+
+                    <div className="panel-content">
+                      <form
+                        onSubmit={handleAddVariant}
+                        className="variant-form"
+                      >
+                        <div className="form-field">
+                          <label htmlFor="sku">SKU</label>
+                          <input
+                            id="sku"
+                            type="text"
+                            placeholder="Código do produto"
+                            value={sku}
+                            onChange={(event) => setSku(event.target.value)}
+                            required
+                          />
+                        </div>
+
+                        <div className="form-field">
+                          <label htmlFor="color">Cor</label>
+                          <input
+                            id="color"
+                            type="text"
+                            placeholder="Ex: Titânio natural"
+                            value={color}
+                            onChange={(event) => setColor(event.target.value)}
+                          />
+                        </div>
+
+                        <div className="form-field">
+                          <label htmlFor="storage">Capacidade</label>
+                          <select
+                            id="storage"
+                            value={storage}
+                            onChange={(event) => setStorage(event.target.value)}
+                            required
+                          >
+                            <option value="64">64 GB</option>
+                            <option value="128">128 GB</option>
+                            <option value="256">256 GB</option>
+                            <option value="512">512 GB</option>
+                            <option value="1024">1 TB</option>
+                            <option value="2048">2 TB</option>
+                          </select>
+                        </div>
+
+                        <div className="form-field">
+                          <label htmlFor="price">Preço em reais</label>
+                          <div className="price-input">
+                            <span>R$</span>
+                            <input
+                              id="price"
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="5499.00"
+                              value={priceReais}
+                              onChange={(event) =>
+                                setPriceReais(event.target.value)
+                              }
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="primary-button full-button"
+                          disabled={saving}
+                        >
+                          <Plus size={17} />
+                          Salvar variante e preço
+                        </button>
+                      </form>
+                    </div>
+                  </article>
+                </div>
+              </div>
+
+              <div className="publication-panel">
+                <div className="publication-info">
+                  <div className="publication-icon">
+                    {selectedProduct.status === "published" ? (
+                      <Eye size={21} />
+                    ) : (
+                      <ExternalLink size={21} />
+                    )}
+                  </div>
+
+                  <div>
+                    <strong>
+                      {selectedProduct.status === "published"
+                        ? "Produto publicado"
+                        : "Pronto para publicar?"}
+                    </strong>
+
+                    <span>
+                      {selectedProduct.status === "published"
+                        ? "Este produto já está publicado na loja."
+                        : "Confira as imagens e variantes antes de disponibilizar na loja."}
+                    </span>
+                  </div>
+                </div>
+
+                {selectedProduct.status !== "published" ? (
+                  <button
+                    className="publish-button"
+                    onClick={handlePublishProduct}
+                    disabled={saving}
+                  >
+                    <CheckCircle size={17} />
+                    Publicar produto
+                  </button>
+                ) : (
+                  <span className="published-confirmation">
+                    <CheckCircle size={17} />
+                    Publicado
+                  </span>
+                )}
+              </div>
+            </section>
+          )}
+
+          <footer className="admin-footer">
+            <span>ILUME CENTRAL</span>
+            <span>Painel administrativo · 2026</span>
+          </footer>
+        </div>
+      </div>
     </main>
   );
 }
