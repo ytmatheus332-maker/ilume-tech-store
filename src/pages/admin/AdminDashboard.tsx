@@ -1,4 +1,3 @@
-
 import {
   useEffect,
   useMemo,
@@ -31,16 +30,32 @@ import {
   Upload,
   CircleDollarSign,
   ExternalLink,
+  Pencil,
+  FilePlus2,
 } from "lucide-react";
 
 type CampaignType = "promotion" | "black_friday" | null;
 
-interface ProductSummary {
+type ProductStatus = "draft" | "published" | "inactive" | "archived";
+
+interface CategorySummary {
   id: string;
   name: string;
   slug: string;
-  status: string;
+  is_active: boolean;
+  parent_id: string | null;
+}
+
+interface ProductSummary {
+  id: string;
+  category_id: string | null;
+  name: string;
+  slug: string;
   brand: string | null;
+  model: string | null;
+  short_description: string | null;
+  description: string | null;
+  status: ProductStatus;
   is_featured: boolean;
   campaign_type: CampaignType;
   badge_label: string | null;
@@ -64,19 +79,25 @@ interface ProductImageSummary {
   is_primary: boolean;
 }
 
-const NEW_IPHONE_MODELS = [
-  "iPhone 14",
-  "iPhone 14 Plus",
-  "iPhone 14 Pro",
-  "iPhone 14 Pro Max",
-  "iPhone 15 Plus",
-  "iPhone 15 Pro",
-  "iPhone 15 Pro Max",
-  "iPhone 16 Plus",
-  "iPhone 16 Pro Max",
-  "iPhone 17",
-  "iPhone 17 Pro",
-];
+interface ProductFormState {
+  category_id: string;
+  name: string;
+  slug: string;
+  brand: string;
+  model: string;
+  short_description: string;
+  description: string;
+}
+
+const EMPTY_PRODUCT_FORM: ProductFormState = {
+  category_id: "",
+  name: "",
+  slug: "",
+  brand: "",
+  model: "",
+  short_description: "",
+  description: "",
+};
 
 function slugify(value: string) {
   return value
@@ -96,13 +117,46 @@ function formatPrice(value: number | null) {
   }).format(value / 100);
 }
 
+function getStatusLabel(status: ProductStatus) {
+  const labels: Record<ProductStatus, string> = {
+    draft: "Rascunho",
+    published: "Publicado",
+    inactive: "Inativo",
+    archived: "Arquivado",
+  };
+
+  return labels[status] || status;
+}
+
+function getStatusClass(status: ProductStatus) {
+  const classes: Record<ProductStatus, string> = {
+    draft: "draft",
+    published: "published",
+    inactive: "inactive",
+    archived: "archived",
+  };
+
+  return classes[status] || "draft";
+}
+
 export default function AdminDashboard() {
   const [products, setProducts] = useState<ProductSummary[]>([]);
+  const [categories, setCategories] = useState<CategorySummary[]>([]);
   const [variants, setVariants] = useState<VariantSummary[]>([]);
   const [images, setImages] = useState<ProductImageSummary[]>([]);
 
   const [selectedProduct, setSelectedProduct] =
     useState<ProductSummary | null>(null);
+
+  const [productFormOpen, setProductFormOpen] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(
+    null
+  );
+
+  const [productForm, setProductForm] =
+    useState<ProductFormState>(EMPTY_PRODUCT_FORM);
+
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
 
   const [sku, setSku] = useState("");
   const [color, setColor] = useState("");
@@ -120,7 +174,7 @@ export default function AdminDashboard() {
   );
 
   const draftCount = useMemo(
-    () => products.filter((product) => product.status !== "published").length,
+    () => products.filter((product) => product.status === "draft").length,
     [products]
   );
 
@@ -134,16 +188,28 @@ export default function AdminDashboard() {
 
     if (!term) return products;
 
-    return products.filter(
-      (product) =>
+    return products.filter((product) => {
+      const categoryName =
+        categories.find((category) => category.id === product.category_id)
+          ?.name || "";
+
+      return (
         product.name.toLowerCase().includes(term) ||
-        product.slug.toLowerCase().includes(term)
-    );
-  }, [products, searchTerm]);
+        product.slug.toLowerCase().includes(term) ||
+        (product.brand || "").toLowerCase().includes(term) ||
+        (product.model || "").toLowerCase().includes(term) ||
+        categoryName.toLowerCase().includes(term)
+      );
+    });
+  }, [products, categories, searchTerm]);
 
   useEffect(() => {
-    fetchProducts();
+    void fetchInitialData();
   }, []);
+
+  async function fetchInitialData() {
+    await Promise.all([fetchProducts(), fetchCategories()]);
+  }
 
   async function fetchProducts() {
     setLoading(true);
@@ -152,7 +218,7 @@ export default function AdminDashboard() {
       const { data, error } = await supabase
         .from("products")
         .select(
-          "id, name, slug, status, brand, is_featured, campaign_type, badge_label"
+          "id, category_id, name, slug, brand, model, short_description, description, status, is_featured, campaign_type, badge_label"
         )
         .order("name");
 
@@ -166,6 +232,25 @@ export default function AdminDashboard() {
       alert("Erro ao carregar catálogo: " + message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchCategories() {
+    try {
+      const { data, error } = await supabase
+        .from("categories")
+        .select("id, name, slug, is_active, parent_id")
+        .eq("is_active", true)
+        .order("name");
+
+      if (error) throw error;
+
+      setCategories((data || []) as CategorySummary[]);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erro desconhecido";
+
+      alert("Erro ao carregar categorias: " + message);
     }
   }
 
@@ -201,71 +286,177 @@ export default function AdminDashboard() {
     setImages(data || []);
   }
 
-  async function handleCreateModels() {
-    if (
-      !window.confirm(
-        "Cadastrar os 11 modelos de iPhone que ainda não existem no catálogo?"
-      )
-    ) {
+  function openCreateProductForm() {
+    setEditingProductId(null);
+    setProductForm(EMPTY_PRODUCT_FORM);
+    setSlugManuallyEdited(false);
+    setProductFormOpen(true);
+
+    setTimeout(() => {
+      document
+        .getElementById("product-form")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }
+
+  function openEditProductForm(product: ProductSummary) {
+    setEditingProductId(product.id);
+
+    setProductForm({
+      category_id: product.category_id || "",
+      name: product.name,
+      slug: product.slug,
+      brand: product.brand || "",
+      model: product.model || "",
+      short_description: product.short_description || "",
+      description: product.description || "",
+    });
+
+    setSlugManuallyEdited(true);
+    setProductFormOpen(true);
+
+    setTimeout(() => {
+      document
+        .getElementById("product-form")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }
+
+  function closeProductForm() {
+    setProductFormOpen(false);
+    setEditingProductId(null);
+    setProductForm(EMPTY_PRODUCT_FORM);
+    setSlugManuallyEdited(false);
+  }
+
+  function handleProductNameChange(value: string) {
+    setProductForm((current) => ({
+      ...current,
+      name: value,
+      slug: slugManuallyEdited ? current.slug : slugify(value),
+    }));
+  }
+
+  function handleProductSlugChange(value: string) {
+    setSlugManuallyEdited(true);
+
+    setProductForm((current) => ({
+      ...current,
+      slug: slugify(value),
+    }));
+  }
+
+  function handleProductFormChange(
+    field: keyof ProductFormState,
+    value: string
+  ) {
+    setProductForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function handleSaveProduct(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const name = productForm.name.trim();
+    const slug = slugify(productForm.slug);
+
+    if (!name) {
+      alert("Informe o nome do produto.");
       return;
+    }
+
+    if (!slug) {
+      alert("Informe um slug válido para o produto.");
+      return;
+    }
+
+    if (productForm.category_id) {
+      const categoryExists = categories.some(
+        (category) => category.id === productForm.category_id
+      );
+
+      if (!categoryExists) {
+        alert("Selecione uma categoria válida e ativa.");
+        return;
+      }
     }
 
     setSaving(true);
 
     try {
-      const { data: category, error: categoryError } = await supabase
-        .from("categories")
-        .select("id")
-        .eq("slug", "iphones")
-        .single();
-
-      if (categoryError) throw categoryError;
-
-      const slugs = NEW_IPHONE_MODELS.map(slugify);
-
-      const { data: existing, error: existingError } = await supabase
+      const { data: existingProduct, error: slugError } = await supabase
         .from("products")
-        .select("slug")
-        .in("slug", slugs);
+        .select("id")
+        .eq("slug", slug)
+        .maybeSingle();
 
-      if (existingError) throw existingError;
+      if (slugError) throw slugError;
 
-      const existingSlugs = new Set(
-        (existing || []).map((product) => product.slug)
-      );
-
-      const missingModels = NEW_IPHONE_MODELS.filter(
-        (name) => !existingSlugs.has(slugify(name))
-      );
-
-      if (missingModels.length === 0) {
-        alert("Todos os modelos já estão cadastrados.");
+      if (
+        existingProduct &&
+        existingProduct.id !== editingProductId
+      ) {
+        alert(
+          "Este endereço (slug) já está sendo utilizado por outro produto. Escolha outro."
+        );
         return;
       }
 
-      const newProducts = missingModels.map((name) => ({
-        category_id: category.id,
+      const productData = {
+        category_id: productForm.category_id || null,
         name,
-        slug: slugify(name),
-        brand: "Apple",
-        model: name,
-        status: "draft",
-      }));
+        slug,
+        brand: productForm.brand.trim() || null,
+        model: productForm.model.trim() || null,
+        short_description:
+          productForm.short_description.trim() || null,
+        description: productForm.description.trim() || null,
+      };
 
-      const { error: insertError } = await supabase
-        .from("products")
-        .insert(newProducts);
+      if (editingProductId) {
+        const { error } = await supabase
+          .from("products")
+          .update({
+            ...productData,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", editingProductId);
 
-      if (insertError) throw insertError;
+        if (error) throw error;
 
-      alert(`${missingModels.length} modelos cadastrados como rascunho.`);
+        alert("Produto atualizado com sucesso!");
+      } else {
+        const { error } = await supabase.from("products").insert({
+          ...productData,
+          status: "draft",
+        });
+
+        if (error) throw error;
+
+        alert("Produto cadastrado como rascunho com sucesso!");
+      }
 
       await fetchProducts();
+
+      if (editingProductId && selectedProduct?.id === editingProductId) {
+        setSelectedProduct((current) =>
+          current
+            ? {
+                ...current,
+                ...productData,
+              }
+            : current
+        );
+      }
+
+      closeProductForm();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Erro desconhecido";
 
-      alert("Não foi possível cadastrar os modelos: " + message);
+      alert("Não foi possível salvar o produto: " + message);
     } finally {
       setSaving(false);
     }
@@ -285,6 +476,12 @@ export default function AdminDashboard() {
       fetchVariants(product.id),
       fetchImages(product.id),
     ]);
+
+    setTimeout(() => {
+      document
+        .getElementById("gerenciamento")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   }
 
   function handleCampaignChange(
@@ -311,6 +508,7 @@ export default function AdminDashboard() {
           is_featured: selectedProduct.is_featured,
           campaign_type: selectedProduct.campaign_type,
           badge_label: selectedProduct.badge_label?.trim() || null,
+          updated_at: new Date().toISOString(),
         })
         .eq("id", selectedProduct.id);
 
@@ -393,8 +591,11 @@ export default function AdminDashboard() {
   async function handleToggleVariant(variant: VariantSummary) {
     if (!selectedProduct) return;
 
-    if (!variant.is_active && variant.price_cents === null) {
-      alert("Defina um preço antes de ativar esta variante.");
+    if (
+      !variant.is_active &&
+      (variant.price_cents === null || variant.price_cents <= 0)
+    ) {
+      alert("Defina um preço válido antes de ativar esta variante.");
       return;
     }
 
@@ -587,16 +788,24 @@ export default function AdminDashboard() {
     if (!selectedProduct) return;
 
     const hasActiveVariant = variants.some(
-      (variant) => variant.is_active && variant.price_cents !== null
+      (variant) =>
+        variant.is_active &&
+        variant.price_cents !== null &&
+        variant.price_cents > 0
     );
 
     if (!hasActiveVariant) {
-      alert("Cadastre e ative pelo menos uma variante com preço.");
+      alert("Cadastre e ative pelo menos uma variante com preço válido.");
       return;
     }
 
     if (images.length === 0) {
       alert("Cadastre pelo menos uma imagem antes de publicar.");
+      return;
+    }
+
+    if (!images.some((image) => image.is_primary)) {
+      alert("Defina uma imagem principal antes de publicar.");
       return;
     }
 
@@ -614,6 +823,7 @@ export default function AdminDashboard() {
         .update({
           status: "published",
           published_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         })
         .eq("id", selectedProduct.id);
 
@@ -708,7 +918,7 @@ export default function AdminDashboard() {
 
             <button
               className="icon-button"
-              onClick={fetchProducts}
+              onClick={fetchInitialData}
               disabled={loading}
               title="Atualizar catálogo"
               aria-label="Atualizar catálogo"
@@ -788,25 +998,237 @@ export default function AdminDashboard() {
               <div>
                 <span className="eyebrow">GESTÃO DE PRODUTOS</span>
                 <h2>Catálogo</h2>
-                <p>Consulte e gerencie os produtos da ILUME.</p>
+                <p>
+                  Consulte, cadastre e gerencie os produtos da ILUME.
+                </p>
               </div>
 
               <button
                 className="primary-button"
-                onClick={handleCreateModels}
+                onClick={openCreateProductForm}
                 disabled={saving}
               >
                 <Plus size={17} />
-                Cadastrar 11 modelos
+                Adicionar produto
               </button>
             </div>
+
+            {productFormOpen && (
+              <div className="product-form-card" id="product-form">
+                <div className="product-form-heading">
+                  <div className="product-form-title">
+                    <div className="panel-icon">
+                      {editingProductId ? (
+                        <Pencil size={19} />
+                      ) : (
+                        <FilePlus2 size={19} />
+                      )}
+                    </div>
+
+                    <div>
+                      <h3>
+                        {editingProductId
+                          ? "Editar produto"
+                          : "Cadastrar novo produto"}
+                      </h3>
+                      <p>
+                        {editingProductId
+                          ? "Atualize as informações básicas do produto."
+                          : "Cadastre qualquer produto no catálogo da ILUME."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="icon-button"
+                    onClick={closeProductForm}
+                    aria-label="Fechar formulário"
+                    title="Fechar"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <form
+                  className="product-form"
+                  onSubmit={handleSaveProduct}
+                >
+                  <div className="product-form-grid">
+                    <div className="form-field">
+                      <label htmlFor="product-name">
+                        Nome do produto *
+                      </label>
+                      <input
+                        id="product-name"
+                        type="text"
+                        placeholder="Ex: iPhone 17 Pro Max"
+                        value={productForm.name}
+                        onChange={(event) =>
+                          handleProductNameChange(event.target.value)
+                        }
+                        maxLength={160}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-field">
+                      <label htmlFor="product-category">
+                        Categoria
+                      </label>
+                      <select
+                        id="product-category"
+                        value={productForm.category_id}
+                        onChange={(event) =>
+                          handleProductFormChange(
+                            "category_id",
+                            event.target.value
+                          )
+                        }
+                      >
+                        <option value="">Sem categoria</option>
+                        {categories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="form-field">
+                      <label htmlFor="product-brand">Marca</label>
+                      <input
+                        id="product-brand"
+                        type="text"
+                        placeholder="Ex: Apple"
+                        value={productForm.brand}
+                        onChange={(event) =>
+                          handleProductFormChange(
+                            "brand",
+                            event.target.value
+                          )
+                        }
+                        maxLength={100}
+                      />
+                    </div>
+
+                    <div className="form-field">
+                      <label htmlFor="product-model">Modelo</label>
+                      <input
+                        id="product-model"
+                        type="text"
+                        placeholder="Ex: A3105"
+                        value={productForm.model}
+                        onChange={(event) =>
+                          handleProductFormChange(
+                            "model",
+                            event.target.value
+                          )
+                        }
+                        maxLength={120}
+                      />
+                    </div>
+
+                    <div className="form-field product-form-full">
+                      <label htmlFor="product-slug">
+                        Slug / endereço do produto *
+                      </label>
+                      <input
+                        id="product-slug"
+                        type="text"
+                        placeholder="nome-do-produto"
+                        value={productForm.slug}
+                        onChange={(event) =>
+                          handleProductSlugChange(event.target.value)
+                        }
+                        maxLength={180}
+                        required
+                      />
+                      <small>
+                        Gerado automaticamente pelo nome. Você também pode
+                        personalizar; não pode se repetir.
+                      </small>
+                    </div>
+
+                    <div className="form-field product-form-full">
+                      <label htmlFor="product-short-description">
+                        Descrição curta
+                      </label>
+                      <textarea
+                        id="product-short-description"
+                        rows={2}
+                        maxLength={300}
+                        placeholder="Resumo do produto para a vitrine."
+                        value={productForm.short_description}
+                        onChange={(event) =>
+                          handleProductFormChange(
+                            "short_description",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </div>
+
+                    <div className="form-field product-form-full">
+                      <label htmlFor="product-description">
+                        Descrição completa
+                      </label>
+                      <textarea
+                        id="product-description"
+                        rows={5}
+                        placeholder="Informações detalhadas sobre o produto."
+                        value={productForm.description}
+                        onChange={(event) =>
+                          handleProductFormChange(
+                            "description",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="product-form-footer">
+                    <span>
+                      {editingProductId
+                        ? "O status atual do produto será preservado."
+                        : "O produto será criado como rascunho e não aparecerá na loja até ser publicado."}
+                    </span>
+
+                    <div className="product-form-actions">
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={closeProductForm}
+                        disabled={saving}
+                      >
+                        Cancelar
+                      </button>
+
+                      <button
+                        type="submit"
+                        className="primary-button"
+                        disabled={saving}
+                      >
+                        <Save size={16} />
+                        {saving
+                          ? "Salvando..."
+                          : editingProductId
+                            ? "Salvar alterações"
+                            : "Cadastrar produto"}
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            )}
 
             <div className="catalog-toolbar">
               <div className="search-box">
                 <Search size={17} />
                 <input
                   type="search"
-                  placeholder="Buscar produto pelo nome..."
+                  placeholder="Buscar por nome, marca, modelo ou categoria..."
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
                 />
@@ -822,94 +1244,116 @@ export default function AdminDashboard() {
                 <thead>
                   <tr>
                     <th>Produto</th>
+                    <th>Categoria</th>
                     <th>Status</th>
                     <th>Campanha</th>
-                    <th className="table-action-heading">Ação</th>
+                    <th className="table-action-heading">Ações</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {filteredProducts.map((product) => (
-                    <tr key={product.id}>
-                      <td>
-                        <div className="product-name-cell">
-                          <div className="product-avatar">
-                            <Smartphone size={20} />
+                  {filteredProducts.map((product) => {
+                    const category = categories.find(
+                      (item) => item.id === product.category_id
+                    );
+
+                    return (
+                      <tr key={product.id}>
+                        <td>
+                          <div className="product-name-cell">
+                            <div className="product-avatar">
+                              <Smartphone size={20} />
+                            </div>
+
+                            <div>
+                              <strong>{product.name}</strong>
+                              <span>{product.slug}</span>
+                            </div>
                           </div>
+                        </td>
 
-                          <div>
-                            <strong>{product.name}</strong>
-                            <span>{product.slug}</span>
-                          </div>
-                        </div>
-                      </td>
+                        <td>
+                          <span className="category-label">
+                            {category?.name || "Sem categoria"}
+                          </span>
+                        </td>
 
-                      <td>
-                        <span
-                          className={`status-badge ${
-                            product.status === "published"
-                              ? "published"
-                              : "draft"
-                          }`}
-                        >
-                          <span />
-                          {product.status === "published"
-                            ? "Publicado"
-                            : "Rascunho"}
-                        </span>
-                      </td>
+                        <td>
+                          <span
+                            className={`status-badge ${getStatusClass(
+                              product.status
+                            )}`}
+                          >
+                            <span />
+                            {getStatusLabel(product.status)}
+                          </span>
+                        </td>
 
-                      <td>
-                        <div className="campaign-cell">
-                          {product.is_featured && (
-                            <span className="mini-tag featured">
-                              <Star size={12} /> Destaque
-                            </span>
-                          )}
-
-                          {product.campaign_type === "promotion" && (
-                            <span className="mini-tag promotion">
-                              Promoção
-                            </span>
-                          )}
-
-                          {product.campaign_type === "black_friday" && (
-                            <span className="mini-tag black">
-                              Black Friday
-                            </span>
-                          )}
-
-                          {product.badge_label && (
-                            <span className="mini-tag custom">
-                              {product.badge_label}
-                            </span>
-                          )}
-
-                          {!product.is_featured &&
-                            !product.campaign_type &&
-                            !product.badge_label && (
-                              <span className="empty-campaign">
-                                Sem campanha
+                        <td>
+                          <div className="campaign-cell">
+                            {product.is_featured && (
+                              <span className="mini-tag featured">
+                                <Star size={12} /> Destaque
                               </span>
                             )}
-                        </div>
-                      </td>
 
-                      <td className="table-action-cell">
-                        <button
-                          className="manage-button"
-                          onClick={() => handleOpenVariants(product)}
-                        >
-                          Gerenciar
-                          <ChevronRight size={15} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                            {product.campaign_type === "promotion" && (
+                              <span className="mini-tag promotion">
+                                Promoção
+                              </span>
+                            )}
+
+                            {product.campaign_type === "black_friday" && (
+                              <span className="mini-tag black">
+                                Black Friday
+                              </span>
+                            )}
+
+                            {product.badge_label && (
+                              <span className="mini-tag custom">
+                                {product.badge_label}
+                              </span>
+                            )}
+
+                            {!product.is_featured &&
+                              !product.campaign_type &&
+                              !product.badge_label && (
+                                <span className="empty-campaign">
+                                  Sem campanha
+                                </span>
+                              )}
+                          </div>
+                        </td>
+
+                        <td className="table-action-cell">
+                          <div className="product-row-actions">
+                            <button
+                              className="edit-button"
+                              onClick={() =>
+                                openEditProductForm(product)
+                              }
+                              title="Editar dados do produto"
+                            >
+                              <Pencil size={14} />
+                              Editar
+                            </button>
+
+                            <button
+                              className="manage-button"
+                              onClick={() => handleOpenVariants(product)}
+                            >
+                              Gerenciar
+                              <ChevronRight size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
 
                   {filteredProducts.length === 0 && (
                     <tr>
-                      <td colSpan={4}>
+                      <td colSpan={5}>
                         <div className="empty-state">
                           <Package size={30} />
                           <strong>
@@ -919,8 +1363,8 @@ export default function AdminDashboard() {
                           </strong>
                           <span>
                             {searchTerm
-                              ? "Tente pesquisar por outro nome."
-                              : "Os produtos cadastrados aparecerão aqui."}
+                              ? "Tente pesquisar por outro nome, marca ou categoria."
+                              : "Cadastre seu primeiro produto para começar."}
                           </span>
                         </div>
                       </td>
@@ -940,7 +1384,9 @@ export default function AdminDashboard() {
                 <div>
                   <span className="eyebrow">GERENCIAMENTO INDIVIDUAL</span>
                   <h2>{selectedProduct.name}</h2>
-                  <p>Configurações, imagens, variantes e publicação.</p>
+                  <p>
+                    Configurações, imagens, variantes e publicação.
+                  </p>
                 </div>
 
                 <button
@@ -985,12 +1431,16 @@ export default function AdminDashboard() {
 
                         <span>
                           <strong>Produto em destaque</strong>
-                          <small>Destacar este produto na loja.</small>
+                          <small>
+                            Destacar este produto na loja.
+                          </small>
                         </span>
                       </label>
 
                       <div className="form-field">
-                        <label htmlFor="campaign">Campanha do produto</label>
+                        <label htmlFor="campaign">
+                          Campanha do produto
+                        </label>
                         <select
                           id="campaign"
                           value={selectedProduct.campaign_type || ""}
@@ -1008,7 +1458,9 @@ export default function AdminDashboard() {
                       </div>
 
                       <div className="form-field">
-                        <label htmlFor="badge">Etiqueta personalizada</label>
+                        <label htmlFor="badge">
+                          Etiqueta personalizada
+                        </label>
                         <input
                           id="badge"
                           type="text"
@@ -1063,7 +1515,9 @@ export default function AdminDashboard() {
                             : "Adicionar imagem"}
                         </strong>
 
-                        <span>Selecione uma imagem do seu dispositivo.</span>
+                        <span>
+                          Selecione uma imagem do seu dispositivo.
+                        </span>
                         <small>JPG, PNG ou WEBP · Máximo 5 MB</small>
 
                         <input
@@ -1151,7 +1605,9 @@ export default function AdminDashboard() {
 
                               <span
                                 className={`variant-status ${
-                                  variant.is_active ? "active" : "inactive"
+                                  variant.is_active
+                                    ? "active"
+                                    : "inactive"
                                 }`}
                               >
                                 {variant.is_active ? "Ativa" : "Inativa"}
@@ -1172,7 +1628,9 @@ export default function AdminDashboard() {
                                 onClick={() => handleToggleVariant(variant)}
                                 disabled={saving}
                               >
-                                {variant.is_active ? "Desativar" : "Ativar"}
+                                {variant.is_active
+                                  ? "Desativar"
+                                  : "Ativar"}
                               </button>
 
                               <button
