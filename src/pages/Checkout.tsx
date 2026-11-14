@@ -395,7 +395,7 @@ export default function Checkout() {
     }
   }
 
-  const pixStatus = (pixPayment?.status || "PENDING").toUpperCase();
+  const pixStatus = String(pixPayment?.status || "PENDING").toUpperCase();
   const isPixPaid = pixStatus === "PAID";
   const isPixTerminal = ["EXPIRED", "REFUNDED", "CHARGEBACK"].includes(
     pixStatus
