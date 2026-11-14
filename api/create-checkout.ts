@@ -1063,6 +1063,7 @@ export default async function handler(req: any, res: any) {
 
     let existingTransaction: any = null;
     let lookupConfirmedNoTransaction = false;
+    let bravoLookupHttpStatus: number | null = null;
 
     // Só uma resposta válida que confirme ausência autoriza nova criação.
     if (!newlyCreated) {
@@ -1083,6 +1084,8 @@ export default async function handler(req: any, res: any) {
               }
             )
         );
+
+        bravoLookupHttpStatus = lookupResponse.status;
 
         if (lookupResponse.ok) {
           const lookupData = await readJson(lookupResponse);
@@ -1131,7 +1134,7 @@ export default async function handler(req: any, res: any) {
 
       if (!transactionId || transactionAmount !== totalCents) {
         trace("bravo_lookup_transaction_mismatch", {
-          httpStatus: 200,
+          httpStatus: bravoLookupHttpStatus,
           amountMatches: transactionAmount === totalCents,
           transactionIdPresent: Boolean(transactionId)
         });
