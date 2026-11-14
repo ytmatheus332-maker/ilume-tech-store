@@ -28,6 +28,117 @@ interface PixPayment {
   expiresAt: string | null;
 }
 
+interface CheckoutIdentity {
+  fingerprint: string;
+  id: string;
+}
+
+interface CheckoutCustomer {
+  name: string;
+  email: string;
+  phone: string;
+  cpf: string;
+}
+
+const CHECKOUT_REQUEST_KEY = "ilume_checkout_request_id";
+
+let memoryCheckoutIdentity: CheckoutIdentity | null = null;
+
+function createCheckoutRequestId(): string {
+  return crypto.randomUUID();
+}
+
+function isValidUUID(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  );
+}
+
+function normalizeDigits(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+function createCheckoutFingerprint(
+  cart: any[],
+  customer: CheckoutCustomer
+): string {
+  const normalizedItems = cart
+    .map((item) => ({
+      variantId: String(item.variantId || item.id || ""),
+      quantity: Number(item.quantity || 1)
+    }))
+    .sort((a, b) => a.variantId.localeCompare(b.variantId));
+
+  return JSON.stringify({
+    items: normalizedItems,
+    customer: {
+      name: customer.name.trim(),
+      email: customer.email.trim().toLowerCase(),
+      phone: normalizeDigits(customer.phone),
+      cpf: normalizeDigits(customer.cpf)
+    }
+  });
+}
+
+function getCheckoutRequestId(fingerprint: string): string {
+  try {
+    const savedValue = sessionStorage.getItem(CHECKOUT_REQUEST_KEY);
+
+    if (savedValue) {
+      const saved = JSON.parse(savedValue) as CheckoutIdentity;
+
+      if (
+        saved.fingerprint === fingerprint &&
+        isValidUUID(saved.id)
+      ) {
+        memoryCheckoutIdentity = saved;
+        return saved.id;
+      }
+    }
+
+    const identity: CheckoutIdentity = {
+      fingerprint,
+      id: createCheckoutRequestId()
+    };
+
+    sessionStorage.setItem(
+      CHECKOUT_REQUEST_KEY,
+      JSON.stringify(identity)
+    );
+
+    memoryCheckoutIdentity = identity;
+
+    return identity.id;
+  } catch {
+    if (
+      memoryCheckoutIdentity?.fingerprint === fingerprint &&
+      isValidUUID(memoryCheckoutIdentity.id)
+    ) {
+      return memoryCheckoutIdentity.id;
+    }
+
+    const identity: CheckoutIdentity = {
+      fingerprint,
+      id: createCheckoutRequestId()
+    };
+
+    memoryCheckoutIdentity = identity;
+
+    return identity.id;
+  }
+}
+
+function clearCheckoutRequestId(): void {
+  memoryCheckoutIdentity = null;
+
+  try {
+    sessionStorage.removeItem(CHECKOUT_REQUEST_KEY);
+  } catch {
+    // A chave poderá ser descartada ao encerrar a sessão.
+  }
+}
+
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -119,8 +230,12 @@ export default function Checkout() {
     };
   }, []);
 
-  async function handleFinishCheckout(event: FormEvent<HTMLFormElement>) {
+  async function handleFinishCheckout(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
+
+    if (loading) return;
 
     if (cart.length === 0) {
       setError("Seu carrinho está vazio.");
@@ -150,6 +265,20 @@ export default function Checkout() {
       setLoading(true);
       setError(null);
 
+      const customer: CheckoutCustomer = {
+        name: name.trim(),
+        email: email.trim(),
+        phone,
+        cpf
+      };
+
+      const fingerprint = createCheckoutFingerprint(
+        cart,
+        customer
+      );
+
+      const checkoutRequestId = getCheckoutRequestId(fingerprint);
+
       const itemsPayload = cart.map((item) => ({
         variantId: item.variantId || item.id,
         quantity: item.quantity || 1,
@@ -161,34 +290,38 @@ export default function Checkout() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          customer: {
-            name: name.trim(),
-            email: email.trim(),
-            phone,
-            cpf,
-          },
+          checkoutRequestId,
+          customer,
           items: itemsPayload,
         }),
       });
 
       const data = await response.json();
 
+      // Resposta inconclusiva: preservar a chave para retry.
       if (!response.ok || !data.success) {
         throw new Error(
-          data.error || "Não foi possível iniciar o pagamento."
+          data.error ||
+            "Não foi possível confirmar o resultado do pagamento. Tente novamente."
         );
       }
 
+      // Mercado Pago.
       if (data.gateway === "mercadopago") {
         if (!data.paymentUrl) {
-          throw new Error("O Mercado Pago não retornou o link de pagamento.");
+          throw new Error(
+            "O Mercado Pago não retornou o link de pagamento."
+          );
         }
 
+        clearCheckoutRequestId();
         clearCart();
+
         window.location.href = data.paymentUrl;
         return;
       }
 
+      // BravoPay PIX.
       if (
         data.gateway === "bravopay" &&
         data.payment?.copyPaste &&
@@ -204,7 +337,6 @@ export default function Checkout() {
           expiresAt: data.payment.expiresAt || null,
         };
 
-        // Mantém o pedido e o carrinho enquanto o pagamento está pendente.
         setPixPayment(payment);
 
         try {
@@ -220,10 +352,15 @@ export default function Checkout() {
           setQrCodeError(true);
         }
 
+        // Não remover a chave após exibir o PIX.
+        // Ela protege a mesma compra contra cobranças duplicadas.
+
         return;
       }
 
-      throw new Error("A resposta do gateway possui um formato inesperado.");
+      throw new Error(
+        "A resposta do gateway possui um formato inesperado."
+      );
     } catch (err) {
       setError(
         err instanceof Error

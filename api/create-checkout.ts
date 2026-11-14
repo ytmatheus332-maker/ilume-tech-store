@@ -1,10 +1,14 @@
 
-
 import { createClient } from "@supabase/supabase-js";
 
 const BRAVOPAY_URL = "https://bravopay.club/api/v1";
 const DEFAULT_STORE_URL = "https://ilume-tech-store.vercel.app";
 const REQUEST_TIMEOUT_MS = 15000;
+
+// Proteção temporária: este pedido só pode recuperar uma cobrança.
+// Nunca poderá criar uma nova transação durante nosso teste.
+const TEST_RECOVERY_ONLY_ORDER_ID =
+  "031186ae-b8de-41c9-b583-79382f356c41";
 
 type Gateway = "mercadopago" | "bravopay";
 
@@ -13,15 +17,24 @@ interface CheckoutItem {
   quantity: number;
 }
 
-interface Customer {
-  name: string;
-  email: string;
-  phone?: string;
-  cpf?: string;
+interface ValidatedItem {
+  variantId: string;
+  quantity: number;
+  priceCents: number;
+  title: string;
 }
 
 function normalizeDigits(value: unknown): string {
   return String(value || "").replace(/\D/g, "");
+}
+
+function isValidUUID(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    )
+  );
 }
 
 function isValidCPF(value: string): boolean {
@@ -31,7 +44,10 @@ function isValidCPF(value: string): boolean {
     return false;
   }
 
-  const calculateDigit = (base: string, factor: number): number => {
+  const calculateDigit = (
+    base: string,
+    factor: number
+  ): number => {
     let total = 0;
 
     for (const digit of base) {
@@ -42,12 +58,9 @@ function isValidCPF(value: string): boolean {
     return remainder === 10 ? 0 : remainder;
   };
 
-  const firstDigit = calculateDigit(cpf.slice(0, 9), 10);
-  const secondDigit = calculateDigit(cpf.slice(0, 10), 11);
-
   return (
-    firstDigit === Number(cpf[9]) &&
-    secondDigit === Number(cpf[10])
+    calculateDigit(cpf.slice(0, 9), 10) === Number(cpf[9]) &&
+    calculateDigit(cpf.slice(0, 10), 11) === Number(cpf[10])
   );
 }
 
@@ -74,7 +87,8 @@ async function markOrderFailed(
   const { error } = await supabase
     .from("orders")
     .update({ status: "failed" })
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .eq("status", "pending");
 
   if (error) {
     console.error(
@@ -82,6 +96,180 @@ async function markOrderFailed(
       error
     );
   }
+}
+
+function sameItems(
+  existing: any[],
+  expected: ValidatedItem[]
+): boolean {
+  if (existing.length !== expected.length) {
+    return false;
+  }
+
+  const existingMap = new Map(
+    existing.map((item) => [
+      item.product_variant_id,
+      {
+        quantity: Number(item.quantity),
+        price: Number(item.unit_price_cents)
+      }
+    ])
+  );
+
+  return expected.every((item) => {
+    const saved = existingMap.get(item.variantId);
+
+    return (
+      saved !== undefined &&
+      saved.quantity === item.quantity &&
+      saved.price === item.priceCents
+    );
+  });
+}
+
+async function ensureOrderItems(
+  supabase: any,
+  orderId: string,
+  items: ValidatedItem[]
+): Promise<boolean> {
+  const { data: existingItems, error: readError } =
+    await supabase
+      .from("order_items")
+      .select("product_variant_id, quantity, unit_price_cents")
+      .eq("order_id", orderId);
+
+  if (readError) {
+    console.error(
+      "CHECKOUT: Erro ao consultar itens do pedido.",
+      readError
+    );
+
+    return false;
+  }
+
+  if (existingItems?.length) {
+    return sameItems(existingItems, items);
+  }
+
+  const rows = items.map((item) => ({
+    order_id: orderId,
+    product_variant_id: item.variantId,
+    quantity: item.quantity,
+    unit_price_cents: item.priceCents
+  }));
+
+  const { error: insertError } = await supabase
+    .from("order_items")
+    .insert(rows);
+
+  if (!insertError) {
+    return true;
+  }
+
+  if (insertError.code === "23505") {
+    const { data: retryItems, error: retryError } =
+      await supabase
+        .from("order_items")
+        .select("product_variant_id, quantity, unit_price_cents")
+        .eq("order_id", orderId);
+
+    if (!retryError && retryItems) {
+      return sameItems(retryItems, items);
+    }
+  }
+
+  console.error(
+    "CHECKOUT: Erro ao registrar itens do pedido.",
+    insertError
+  );
+
+  return false;
+}
+
+function getBravoTransactions(data: any): any[] {
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  if (Array.isArray(data?.data)) {
+    return data.data;
+  }
+
+  if (Array.isArray(data?.transactions)) {
+    return data.transactions;
+  }
+
+  if (data && typeof data === "object" && data.id) {
+    return [data];
+  }
+
+  return [];
+}
+
+function getValidBravoTransaction(
+  data: any,
+  orderId: string,
+  totalCents: number
+): any | null {
+  const transactions = getBravoTransactions(data);
+
+  return (
+    transactions.find((transaction) => {
+      return (
+        String(transaction?.id || "").length > 0 &&
+        String(transaction?.external_reference || "") === orderId &&
+        Number(transaction?.amount_cents) === totalCents &&
+        typeof transaction?.pix?.copy_paste === "string" &&
+        transaction.pix.copy_paste.length > 0
+      );
+    }) || null
+  );
+}
+
+async function saveBravoTransaction(
+  supabase: any,
+  orderId: string,
+  transaction: any
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("orders")
+    .update({
+      gateway_payment_id: String(transaction.id)
+    })
+    .eq("id", orderId)
+    .eq("gateway", "bravopay");
+
+  if (error) {
+    console.error(
+      "CHECKOUT: Não foi possível salvar o ID da transação BravoPay.",
+      error
+    );
+
+    return false;
+  }
+
+  return true;
+}
+
+function returnBravoPayment(
+  res: any,
+  orderId: string,
+  transaction: any,
+  totalCents: number
+) {
+  return res.status(200).json({
+    success: true,
+    gateway: "bravopay",
+    orderId,
+    transactionId: String(transaction.id),
+    payment: {
+      method: "PIX",
+      status: transaction.status || "PENDING",
+      amountCents: totalCents,
+      copyPaste: transaction.pix.copy_paste,
+      expiresAt: transaction.pix.expires_at || null
+    }
+  });
 }
 
 export default async function handler(req: any, res: any) {
@@ -126,7 +314,7 @@ export default async function handler(req: any, res: any) {
   let orderId: string | null = null;
 
   try {
-    // 1. Consultar gateway ativo
+    // 1. Consultar gateway ativo.
 
     if (req.method === "GET") {
       const { data, error } = await supabase
@@ -136,7 +324,10 @@ export default async function handler(req: any, res: any) {
         .single();
 
       if (error || !data) {
-        console.error("CHECKOUT: Erro ao consultar gateway.", error);
+        console.error(
+          "CHECKOUT: Erro ao consultar gateway.",
+          error
+        );
 
         return res.status(500).json({
           error: "Não foi possível consultar o meio de pagamento."
@@ -157,9 +348,19 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 2. Validar dados recebidos
+    // 2. Validar dados recebidos.
 
-    const { customer, items } = req.body || {};
+    const {
+      customer,
+      items,
+      checkoutRequestId
+    } = req.body || {};
+
+    if (!isValidUUID(checkoutRequestId)) {
+      return res.status(400).json({
+        error: "Identificador da tentativa de checkout inválido."
+      });
+    }
 
     if (
       !customer ||
@@ -196,14 +397,16 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 3. Identificar gateway diretamente no banco
+    // 3. Consultar gateway configurado.
 
-    const { data: paymentSettings, error: settingsError } =
-      await supabase
-        .from("payment_settings")
-        .select("active_gateway")
-        .eq("id", 1)
-        .single();
+    const {
+      data: paymentSettings,
+      error: settingsError
+    } = await supabase
+      .from("payment_settings")
+      .select("active_gateway")
+      .eq("id", 1)
+      .single();
 
     if (settingsError || !paymentSettings) {
       console.error(
@@ -216,53 +419,18 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    const activeGateway = paymentSettings.active_gateway as Gateway;
+    const configuredGateway =
+      paymentSettings.active_gateway as Gateway;
 
-    if (!["mercadopago", "bravopay"].includes(activeGateway)) {
+    if (
+      !["mercadopago", "bravopay"].includes(configuredGateway)
+    ) {
       return res.status(500).json({
         error: "Gateway de pagamento inválido."
       });
     }
 
-    // 4. Validar informações específicas do gateway
-
-    if (activeGateway === "bravopay") {
-      if (
-        customerPhone.length < 10 ||
-        customerPhone.length > 13
-      ) {
-        return res.status(400).json({
-          error: "Informe um telefone válido com DDD."
-        });
-      }
-
-      if (!isValidCPF(customerCPF)) {
-        return res.status(400).json({
-          error: "Informe um CPF válido."
-        });
-      }
-
-      if (!process.env.BRAVOPAY_API_KEY) {
-        console.error("CHECKOUT: BRAVOPAY_API_KEY ausente.");
-
-        return res.status(500).json({
-          error: "A configuração da BravoPay está incompleta."
-        });
-      }
-    }
-
-    if (
-      activeGateway === "mercadopago" &&
-      !process.env.MP_ACCESS_TOKEN
-    ) {
-      console.error("CHECKOUT: MP_ACCESS_TOKEN ausente.");
-
-      return res.status(500).json({
-        error: "A configuração do Mercado Pago está incompleta."
-      });
-    }
-
-    // 5. Validar e consolidar itens do carrinho
+    // 4. Consolidar quantidades.
 
     const quantities = new Map<string, number>();
 
@@ -281,7 +449,8 @@ export default async function handler(req: any, res: any) {
         });
       }
 
-      const accumulated = (quantities.get(variantId) || 0) + quantity;
+      const accumulated =
+        (quantities.get(variantId) || 0) + quantity;
 
       if (accumulated > 10) {
         return res.status(400).json({
@@ -292,13 +461,9 @@ export default async function handler(req: any, res: any) {
       quantities.set(variantId, accumulated);
     }
 
-    const validatedItems: Array<{
-      variantId: string;
-      quantity: number;
-      priceCents: number;
-      title: string;
-    }> = [];
+    // 5. Validar preços e disponibilidade no banco.
 
+    const validatedItems: ValidatedItem[] = [];
     let totalCents = 0;
 
     for (const [variantId, quantity] of quantities.entries()) {
@@ -367,38 +532,63 @@ export default async function handler(req: any, res: any) {
         ? `${variant.storage_gb}GB`
         : "128GB";
 
-      const title = `${productName} - ${
-        variant.color || "Padrão"
-      } (${storage})`;
-
       validatedItems.push({
         variantId,
         quantity,
         priceCents,
-        title
+        title: `${productName} - ${variant.color || "Padrão"} (${storage})`
       });
     }
 
-    // 6. Criar pedido principal
+    // 6. Recuperar pedido existente ou criar um novo.
 
-    const { data: order, error: orderError } =
-      await supabase
+    let order: any = null;
+
+    const {
+      data: insertedOrder,
+      error: orderInsertError
+    } = await supabase
+      .from("orders")
+      .insert([{
+        checkout_request_id: checkoutRequestId,
+        customer_name: customerName,
+        customer_email: customerEmail,
+        customer_phone: customerPhone || null,
+        total_amount_cents: totalCents,
+        status: "pending",
+        gateway: configuredGateway
+      }])
+      .select()
+      .single();
+
+    if (!orderInsertError && insertedOrder) {
+      order = insertedOrder;
+    } else if (orderInsertError?.code === "23505") {
+      const {
+        data: existingOrder,
+        error: existingOrderError
+      } = await supabase
         .from("orders")
-        .insert([{
-          customer_name: customerName,
-          customer_email: customerEmail,
-          customer_phone: customerPhone || null,
-          total_amount_cents: totalCents,
-          status: "pending",
-          gateway: activeGateway
-        }])
-        .select()
-        .single();
+        .select("*")
+        .eq("checkout_request_id", checkoutRequestId)
+        .maybeSingle();
 
-    if (orderError || !order) {
+      if (existingOrderError || !existingOrder) {
+        console.error(
+          "CHECKOUT: Não foi possível recuperar o pedido existente.",
+          existingOrderError
+        );
+
+        return res.status(500).json({
+          error: "Não foi possível recuperar sua tentativa de pagamento."
+        });
+      }
+
+      order = existingOrder;
+    } else {
       console.error(
         "CHECKOUT: Erro ao registrar pedido.",
-        orderError
+        orderInsertError
       );
 
       return res.status(500).json({
@@ -408,29 +598,71 @@ export default async function handler(req: any, res: any) {
 
     orderId = order.id;
 
-    // 7. Registrar os produtos em order_items
+    // 7. Validar se a chave pertence à mesma compra.
 
-    const orderItems = validatedItems.map((item) => ({
-      order_id: order.id,
-      product_variant_id: item.variantId,
-      quantity: item.quantity,
-      unit_price_cents: item.priceCents
-    }));
+    const orderGateway = order.gateway as Gateway;
 
-    const { error: itemsError } = await supabase
-      .from("order_items")
-      .insert(orderItems);
+    if (
+      !["mercadopago", "bravopay"].includes(orderGateway) ||
+      order.customer_email !== customerEmail ||
+      order.customer_name !== customerName ||
+      Number(order.total_amount_cents) !== totalCents ||
+      (order.customer_phone || "") !== (customerPhone || "")
+    ) {
+      return res.status(409).json({
+        error: "Esta tentativa já está vinculada a outro pedido. Inicie uma nova compra."
+      });
+    }
 
-    if (itemsError) {
-      console.error(
-        "CHECKOUT: Erro ao registrar itens do pedido.",
-        itemsError
-      );
+    // 8. Garantir integridade dos itens.
 
-      await markOrderFailed(supabase, order.id);
+    const itemsReady = await ensureOrderItems(
+      supabase,
+      order.id,
+      validatedItems
+    );
+
+    if (!itemsReady) {
+      return res.status(500).json({
+        error: "Não foi possível confirmar os produtos do pedido. Tente novamente."
+      });
+    }
+
+    // 9. Validar configuração do gateway original do pedido.
+
+    if (orderGateway === "bravopay") {
+      if (
+        customerPhone.length < 10 ||
+        customerPhone.length > 13
+      ) {
+        return res.status(400).json({
+          error: "Informe um telefone válido com DDD."
+        });
+      }
+
+      if (!isValidCPF(customerCPF)) {
+        return res.status(400).json({
+          error: "Informe um CPF válido."
+        });
+      }
+
+      if (!process.env.BRAVOPAY_API_KEY) {
+        console.error("CHECKOUT: BRAVOPAY_API_KEY ausente.");
+
+        return res.status(500).json({
+          error: "A configuração da BravoPay está incompleta."
+        });
+      }
+    }
+
+    if (
+      orderGateway === "mercadopago" &&
+      !process.env.MP_ACCESS_TOKEN
+    ) {
+      console.error("CHECKOUT: MP_ACCESS_TOKEN ausente.");
 
       return res.status(500).json({
-        error: "Não foi possível registrar os produtos do pedido."
+        error: "A configuração do Mercado Pago está incompleta."
       });
     }
 
@@ -438,9 +670,49 @@ export default async function handler(req: any, res: any) {
       process.env.STORE_URL || DEFAULT_STORE_URL
     ).replace(/\/$/, "");
 
-    // 8. Fluxo Mercado Pago
+    // 10. Fluxo Mercado Pago.
 
-    if (activeGateway === "mercadopago") {
+    if (orderGateway === "mercadopago") {
+      if (order.preference_id) {
+        const preferenceResponse = await fetch(
+          `https://api.mercadopago.com/checkout/preferences/${encodeURIComponent(
+            order.preference_id
+          )}`,
+          {
+            method: "GET",
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            headers: {
+              Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`
+            }
+          }
+        );
+
+        const preferenceData = await readJson(
+          preferenceResponse
+        );
+
+        if (
+          preferenceResponse.ok &&
+          preferenceData?.init_point
+        ) {
+          return res.status(200).json({
+            success: true,
+            gateway: "mercadopago",
+            orderId: order.id,
+            paymentUrl: preferenceData.init_point
+          });
+        }
+
+        console.error(
+          "CHECKOUT: Não foi possível recuperar preferência existente.",
+          preferenceData
+        );
+
+        return res.status(502).json({
+          error: "Estamos verificando seu pagamento anterior. Tente novamente em instantes."
+        });
+      }
+
       const mpResponse = await fetch(
         "https://api.mercadopago.com/checkout/preferences",
         {
@@ -479,10 +751,16 @@ export default async function handler(req: any, res: any) {
           mpData
         );
 
-        await markOrderFailed(supabase, order.id);
+        if (
+          mpResponse.status >= 400 &&
+          mpResponse.status < 500 &&
+          ![408, 409, 429].includes(mpResponse.status)
+        ) {
+          await markOrderFailed(supabase, order.id);
+        }
 
         return res.status(502).json({
-          error: "Não foi possível iniciar o pagamento no Mercado Pago."
+          error: "Não foi possível confirmar a criação do pagamento. Tente novamente."
         });
       }
 
@@ -499,10 +777,8 @@ export default async function handler(req: any, res: any) {
           preferenceError
         );
 
-        await markOrderFailed(supabase, order.id);
-
         return res.status(500).json({
-          error: "Não foi possível finalizar a preparação do pagamento."
+          error: "O pagamento está em verificação. Tente novamente em instantes."
         });
       }
 
@@ -514,7 +790,114 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 9. Fluxo BravoPay — criação da cobrança PIX
+    // 11. Consultar transação existente na BravoPay.
+
+    const bravoHeaders = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.BRAVOPAY_API_KEY}`
+    };
+
+    let existingTransaction: any = null;
+    let lookupSucceeded = false;
+
+    try {
+      const lookupResponse = await fetch(
+        `${BRAVOPAY_URL}/transactions?external_reference=${encodeURIComponent(
+          order.id
+        )}`,
+        {
+          method: "GET",
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          headers: bravoHeaders
+        }
+      );
+
+      const lookupData = await readJson(lookupResponse);
+
+      if (!lookupResponse.ok) {
+        console.error(
+          "CHECKOUT: Consulta BravoPay retornou HTTP não aprovado.",
+          lookupResponse.status,
+          lookupData
+        );
+
+        // No pedido protegido, não continuar para criação.
+        if (order.id === TEST_RECOVERY_ONLY_ORDER_ID) {
+          return res.status(503).json({
+            success: false,
+            pending: true,
+            orderId: order.id,
+            error: "Não foi possível consultar a cobrança existente. Nenhuma nova cobrança foi criada."
+          });
+        }
+      } else {
+        lookupSucceeded = true;
+
+        existingTransaction = getValidBravoTransaction(
+          lookupData,
+          order.id,
+          totalCents
+        );
+      }
+    } catch (lookupError) {
+      console.error(
+        "CHECKOUT: Consulta BravoPay inconclusiva.",
+        lookupError
+      );
+
+      // Pedido de teste: nunca criar cobrança após falha no GET.
+      if (order.id === TEST_RECOVERY_ONLY_ORDER_ID) {
+        return res.status(503).json({
+          success: false,
+          pending: true,
+          orderId: order.id,
+          error: "A consulta da cobrança anterior falhou. Nenhuma nova cobrança foi criada."
+        });
+      }
+    }
+
+    // 12. Se encontrou a cobrança, sincronizar e retornar PIX.
+
+    if (existingTransaction) {
+      const saved = await saveBravoTransaction(
+        supabase,
+        order.id,
+        existingTransaction
+      );
+
+      if (!saved) {
+        return res.status(202).json({
+          success: false,
+          pending: true,
+          orderId: order.id,
+          error: "Encontramos sua cobrança, mas estamos sincronizando o pagamento. Tente novamente em instantes."
+        });
+      }
+
+      return returnBravoPayment(
+        res,
+        order.id,
+        existingTransaction,
+        totalCents
+      );
+    }
+
+    // 13. Proteção do teste:
+    // se a consulta funcionou, mas não encontrou a cobrança,
+    // bloquear qualquer tentativa de criação.
+
+    if (order.id === TEST_RECOVERY_ONLY_ORDER_ID) {
+      return res.status(409).json({
+        success: false,
+        pending: true,
+        orderId: order.id,
+        lookupSucceeded,
+        error: "A cobrança existente não foi localizada com os dados esperados. Nenhuma nova cobrança foi criada."
+      });
+    }
+
+    // 14. Criar PIX para pedidos normais.
+    // O teste protegido acima não consegue chegar até este trecho.
 
     const bravoResponse = await fetch(
       `${BRAVOPAY_URL}/transactions`,
@@ -522,8 +905,8 @@ export default async function handler(req: any, res: any) {
         method: "POST",
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.BRAVOPAY_API_KEY}`
+          ...bravoHeaders,
+          "Idempotency-Key": checkoutRequestId
         },
         body: JSON.stringify({
           amount_cents: totalCents,
@@ -540,67 +923,58 @@ export default async function handler(req: any, res: any) {
     );
 
     const bravoData = await readJson(bravoResponse);
-
     const returnedAmount = Number(bravoData?.amount_cents);
 
-    if (
-      !bravoResponse.ok ||
-      !bravoData?.id ||
-      !bravoData?.pix?.copy_paste ||
-      !Number.isSafeInteger(returnedAmount) ||
-      returnedAmount !== totalCents
-    ) {
-      console.error(
-        "CHECKOUT: Resposta inválida da BravoPay.",
-        bravoData
-      );
+    const validBravoResponse =
+      bravoResponse.ok &&
+      String(bravoData?.id || "").length > 0 &&
+      typeof bravoData?.pix?.copy_paste === "string" &&
+      bravoData.pix.copy_paste.length > 0 &&
+      Number.isSafeInteger(returnedAmount) &&
+      returnedAmount === totalCents;
 
-      await markOrderFailed(supabase, order.id);
+    if (!validBravoResponse) {
+      console.error(
+        "CHECKOUT: Resposta BravoPay não confirmada.",
+        {
+          httpStatus: bravoResponse.status,
+          response: bravoData
+        }
+      );
 
       return res.status(502).json({
-        error: "Não foi possível validar a cobrança PIX."
+        success: false,
+        pending: true,
+        orderId: order.id,
+        error: "Não foi possível confirmar o resultado da cobrança. Sua compra está em verificação. Tente novamente em instantes."
       });
     }
 
-    // 10. Salvar identificador da transação
+    // 15. Salvar identificador da transação.
 
-    const transactionId = String(bravoData.id);
+    const saved = await saveBravoTransaction(
+      supabase,
+      order.id,
+      bravoData
+    );
 
-    const { error: transactionError } = await supabase
-      .from("orders")
-      .update({
-        gateway_payment_id: transactionId
-      })
-      .eq("id", order.id);
-
-    if (transactionError) {
-      console.error(
-        "CHECKOUT: Erro ao salvar transação BravoPay.",
-        transactionError
-      );
-
-      await markOrderFailed(supabase, order.id);
-
-      return res.status(500).json({
-        error: "Não foi possível vincular o pagamento ao pedido."
+    if (!saved) {
+      return res.status(202).json({
+        success: false,
+        pending: true,
+        orderId: order.id,
+        error: "A cobrança foi criada e está em verificação. Tente novamente em instantes."
       });
     }
 
-    // 11. Retornar informações PIX
+    // 16. Retornar PIX.
 
-    return res.status(200).json({
-      success: true,
-      gateway: "bravopay",
-      orderId: order.id,
-      transactionId,
-      payment: {
-        method: "PIX",
-        status: bravoData.status,
-        amountCents: returnedAmount,
-        copyPaste: bravoData.pix.copy_paste,
-        expiresAt: bravoData.pix.expires_at || null
-      }
-    });
+    return returnBravoPayment(
+      res,
+      order.id,
+      bravoData,
+      totalCents
+    );
 
   } catch (error: any) {
     console.error(
@@ -608,18 +982,26 @@ export default async function handler(req: any, res: any) {
       error
     );
 
-    if (orderId) {
-      await markOrderFailed(supabase, orderId);
-    }
+    // Nunca marcar failed em timeout ou erro inconclusivo.
+    // A cobrança pode ter sido criada no gateway.
 
-    if (error?.name === "TimeoutError" || error?.name === "AbortError") {
+    if (
+      error?.name === "TimeoutError" ||
+      error?.name === "AbortError"
+    ) {
       return res.status(504).json({
-        error: "O serviço de pagamento demorou para responder. Tente novamente."
+        success: false,
+        pending: true,
+        orderId,
+        error: "Não foi possível confirmar a resposta do pagamento. Sua compra permanece em verificação. Tente novamente em instantes."
       });
     }
 
     return res.status(500).json({
-      error: "Ocorreu um erro ao processar seu pedido."
+      success: false,
+      pending: true,
+      orderId,
+      error: "Ocorreu um erro ao processar o pedido. Tente novamente em instantes."
     });
   }
 }
