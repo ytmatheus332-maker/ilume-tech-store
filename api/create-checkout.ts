@@ -6,9 +6,9 @@ const DEFAULT_STORE_URL = "https://ilume-tech-store.vercel.app";
 
 // A função terá até 30 segundos na configuração da Vercel.
 // Os timeouts individuais deixam margem para finalizar a resposta.
-const SUPABASE_TIMEOUT_MS = 5000;
-const BRAVO_LOOKUP_TIMEOUT_MS = 5000;
-const BRAVO_CREATE_TIMEOUT_MS = 12000;
+const SUPABASE_TIMEOUT_MS = 3000;
+const BRAVO_LOOKUP_TIMEOUT_MS = 3000;
+const BRAVO_CREATE_TIMEOUT_MS = 8000;
 const MP_TIMEOUT_MS = 7000;
 const CHECKOUT_FUNCTION_TIMEOUT_MS = 30_000;
 const FINALIZATION_RESERVE_MS = 1_500;
@@ -226,19 +226,36 @@ async function markOrderFailed(
   }
 }
 
-function getBravoTransactions(data: any): any[] | null {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(data?.transactions)) return data.transactions;
-  if (data && typeof data === "object" && data.id) return [data];
-  return null;
-}
+const BRAVO_TRANSACTION_STATUSES = new Set([
+  "PENDING",
+  "PAID",
+  "EXPIRED",
+  "FAILED",
+  "REFUNDED",
+  "CHARGEBACK"
+]);
 
 function getBravoTransactionForOrder(
   data: any,
   orderId: string
 ): { transaction: any | null; confirmedNoMatch: boolean } {
-  const transactions = getBravoTransactions(data);
+  let transactions: any[] | null = null;
+  let absenceIsConfirmed = false;
+
+  if (Array.isArray(data?.data)) {
+    transactions = data.data;
+    absenceIsConfirmed =
+      typeof data.has_more === "boolean" &&
+      data.has_more === false;
+  } else if (Array.isArray(data?.transactions)) {
+    // Compatibilidade com o formato legado: pode recuperar uma
+    // transação, mas não confirma ausência sem o envelope oficial.
+    transactions = data.transactions;
+  } else if (Array.isArray(data)) {
+    transactions = data;
+  } else if (data && typeof data === "object" && data.id) {
+    transactions = [data];
+  }
 
   if (!transactions) {
     return { transaction: null, confirmedNoMatch: false };
@@ -254,8 +271,15 @@ function getBravoTransactionForOrder(
 
   return {
     transaction: null,
-    confirmedNoMatch: transactions.length === 0
+    confirmedNoMatch:
+      transactions.length === 0 && absenceIsConfirmed
   };
+}
+
+function getBravoTransactionStatus(transaction: any): string | null {
+  const status = String(transaction?.status || "").toUpperCase();
+
+  return BRAVO_TRANSACTION_STATUSES.has(status) ? status : null;
 }
 
 async function saveBravoTransaction(
@@ -298,11 +322,20 @@ function returnBravoPayment(
     transactionId: String(transaction.id),
     payment: {
       method: "PIX",
-      status: String(transaction.status || "PENDING").toUpperCase(),
+      status: getBravoTransactionStatus(transaction) || "PENDING",
       amountCents: totalCents,
-      copyPaste: transaction.pix?.copy_paste || "",
-      qrCode: transaction.pix?.qr_code || null,
-      qrCodeBase64: transaction.pix?.qr_code_base64 || null,
+      copyPaste:
+        getBravoTransactionStatus(transaction) === "PENDING"
+          ? transaction.pix?.copy_paste || ""
+          : "",
+      qrCode:
+        getBravoTransactionStatus(transaction) === "PENDING"
+          ? transaction.pix?.qr_code || null
+          : null,
+      qrCodeBase64:
+        getBravoTransactionStatus(transaction) === "PENDING"
+          ? transaction.pix?.qr_code_base64 || null
+          : null,
       expiresAt: transaction.pix?.expires_at || null
     }
   });
@@ -557,7 +590,6 @@ export default async function handler(req: any, res: any) {
       quantities.set(variantId, accumulated);
     }
 
-    // =====================================================
     // =====================================================
     // 3. CONSULTAR GATEWAY E VARIANTES EM PARALELO
     // =====================================================
@@ -1076,7 +1108,8 @@ export default async function handler(req: any, res: any) {
             fetch(
               BRAVOPAY_URL +
                 "/transactions?external_reference=" +
-                encodeURIComponent(order.id),
+                encodeURIComponent(order.id) +
+                "&limit=100",
               {
                 method: "GET",
                 signal: AbortSignal.timeout(BRAVO_LOOKUP_TIMEOUT_MS),
@@ -1132,17 +1165,30 @@ export default async function handler(req: any, res: any) {
       const transactionId = String(existingTransaction.id || "");
       const transactionAmount = Number(existingTransaction.amount_cents);
 
-      if (!transactionId || transactionAmount !== totalCents) {
+      const transactionStatus =
+        getBravoTransactionStatus(existingTransaction);
+      const hasCopyPaste =
+        typeof existingTransaction?.pix?.copy_paste === "string" &&
+        existingTransaction.pix.copy_paste.length > 0;
+
+      if (
+        !transactionId ||
+        transactionAmount !== totalCents ||
+        !transactionStatus ||
+        (transactionStatus === "PENDING" && !hasCopyPaste)
+      ) {
         trace("bravo_lookup_transaction_mismatch", {
           httpStatus: bravoLookupHttpStatus,
           amountMatches: transactionAmount === totalCents,
-          transactionIdPresent: Boolean(transactionId)
+          transactionIdPresent: Boolean(transactionId),
+          statusValid: Boolean(transactionStatus),
+          pixCodePresent: hasCopyPaste
         });
 
         return pendingPayment(
           res,
           order.id,
-          "Encontramos uma transação vinculada a este pedido, mas não foi possível validar os dados. Não gere outro PIX; tente recuperar esta tentativa novamente."
+          "Encontramos uma transação vinculada a este pedido, mas a resposta está incompleta. Não gere outro PIX; tente recuperar esta tentativa novamente."
         );
       }
 
@@ -1173,13 +1219,7 @@ export default async function handler(req: any, res: any) {
           )
       );
 
-      const hasCopyPaste =
-        typeof existingTransaction?.pix?.copy_paste === "string" &&
-        existingTransaction.pix.copy_paste.length > 0;
-      const transactionIsPaid =
-        String(existingTransaction.status || "").toUpperCase() === "PAID";
-
-      if (!saved || (!hasCopyPaste && !transactionIsPaid)) {
+      if (!saved) {
         return pendingPayment(
           res,
           order.id,
@@ -1296,17 +1336,20 @@ export default async function handler(req: any, res: any) {
 
     const bravoData = await readJson(bravoResponse);
 
-    const returnedAmount = Number(
-      bravoData?.amount_cents
-    );
+    const returnedAmount = Number(bravoData?.amount_cents);
+    const createdTransactionStatus =
+      getBravoTransactionStatus(bravoData);
+    const hasCreatedPixCode =
+      typeof bravoData?.pix?.copy_paste === "string" &&
+      bravoData.pix.copy_paste.length > 0;
 
     const validBravoResponse =
       bravoResponse.ok &&
       String(bravoData?.id || "").length > 0 &&
-      typeof bravoData?.pix?.copy_paste === "string" &&
-      bravoData.pix.copy_paste.length > 0 &&
+      Boolean(createdTransactionStatus) &&
       Number.isSafeInteger(returnedAmount) &&
-      returnedAmount === totalCents;
+      returnedAmount === totalCents &&
+      (createdTransactionStatus !== "PENDING" || hasCreatedPixCode);
 
     if (!validBravoResponse) {
       const responseCode = getGatewayErrorCode(bravoData);
