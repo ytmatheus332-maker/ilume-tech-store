@@ -10,6 +10,8 @@ const SUPABASE_TIMEOUT_MS = 5000;
 const BRAVO_LOOKUP_TIMEOUT_MS = 5000;
 const BRAVO_CREATE_TIMEOUT_MS = 12000;
 const MP_TIMEOUT_MS = 7000;
+const CHECKOUT_FUNCTION_TIMEOUT_MS = 30_000;
+const FINALIZATION_RESERVE_MS = 1_500;
 
 type Gateway = "mercadopago" | "bravopay";
 
@@ -224,44 +226,36 @@ async function markOrderFailed(
   }
 }
 
-function getBravoTransactions(data: any): any[] {
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  if (Array.isArray(data?.data)) {
-    return data.data;
-  }
-
-  if (Array.isArray(data?.transactions)) {
-    return data.transactions;
-  }
-
-  if (data && typeof data === "object" && data.id) {
-    return [data];
-  }
-
-  return [];
+function getBravoTransactions(data: any): any[] | null {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.transactions)) return data.transactions;
+  if (data && typeof data === "object" && data.id) return [data];
+  return null;
 }
 
-function getValidBravoTransaction(
+function getBravoTransactionForOrder(
   data: any,
-  orderId: string,
-  totalCents: number
-): any | null {
+  orderId: string
+): { transaction: any | null; confirmedNoMatch: boolean } {
   const transactions = getBravoTransactions(data);
 
-  return (
-    transactions.find((transaction) => {
-      return (
-        String(transaction?.id || "").length > 0 &&
-        String(transaction?.external_reference || "") === orderId &&
-        Number(transaction?.amount_cents) === totalCents &&
-        typeof transaction?.pix?.copy_paste === "string" &&
-        transaction.pix.copy_paste.length > 0
-      );
-    }) || null
+  if (!transactions) {
+    return { transaction: null, confirmedNoMatch: false };
+  }
+
+  const transaction = transactions.find(
+    (item) => String(item?.external_reference || "") === orderId
   );
+
+  if (transaction) {
+    return { transaction, confirmedNoMatch: false };
+  }
+
+  return {
+    transaction: null,
+    confirmedNoMatch: transactions.length === 0
+  };
 }
 
 async function saveBravoTransaction(
@@ -530,86 +524,6 @@ export default async function handler(req: any, res: any) {
     }
 
     // =====================================================
-    // 3. CONSULTAR GATEWAY CONFIGURADO
-    // =====================================================
-
-    const {
-      data: paymentSettings,
-      error: settingsError
-    } = await runStep(
-      "payment_settings",
-      () =>
-        supabase
-          .from("payment_settings")
-          .select("active_gateway")
-          .eq("id", 1)
-          .single()
-    );
-
-    if (settingsError || !paymentSettings) {
-      console.error(
-        "CHECKOUT: Erro ao consultar payment_settings.",
-        settingsError?.code || "UNKNOWN"
-      );
-
-      return res.status(500).json({
-        error: "Não foi possível identificar o meio de pagamento."
-      });
-    }
-
-    const configuredGateway =
-      paymentSettings.active_gateway as Gateway;
-
-    if (
-      !["mercadopago", "bravopay"].includes(configuredGateway)
-    ) {
-      return res.status(500).json({
-        error: "Gateway de pagamento inválido."
-      });
-    }
-
-    // Validação antecipada: evita criar pedidos novos com dados inválidos.
-    if (configuredGateway === "bravopay") {
-      if (
-        customerPhone.length < 10 ||
-        customerPhone.length > 13
-      ) {
-        return res.status(400).json({
-          error: "Informe um telefone válido com DDD."
-        });
-      }
-
-      if (!isValidCPF(customerCPF)) {
-        return res.status(400).json({
-          error: "Informe um CPF válido."
-        });
-      }
-
-      if (!process.env.BRAVOPAY_API_KEY) {
-        console.error("CHECKOUT: BRAVOPAY_API_KEY ausente.");
-
-        return res.status(500).json({
-          error: "A configuração da BravoPay está incompleta."
-        });
-      }
-    }
-
-    if (
-      configuredGateway === "mercadopago" &&
-      !process.env.MP_ACCESS_TOKEN
-    ) {
-      console.error("CHECKOUT: MP_ACCESS_TOKEN ausente.");
-
-      return res.status(500).json({
-        error: "A configuração do Mercado Pago está incompleta."
-      });
-    }
-
-    trace("gateway_selected", {
-      gateway: configuredGateway
-    });
-
-    // =====================================================
     // 4. CONSOLIDAR QUANTIDADES
     // =====================================================
 
@@ -644,17 +558,24 @@ export default async function handler(req: any, res: any) {
     }
 
     // =====================================================
-    // 5. CONSULTAR VARIANTES
+    // =====================================================
+    // 3. CONSULTAR GATEWAY E VARIANTES EM PARALELO
     // =====================================================
 
     const variantIds = Array.from(quantities.keys());
 
-    const {
-      data: variants,
-      error: variantsError
-    } = await runStep(
-      "product_variants",
-      () =>
+    const [
+      { data: paymentSettings, error: settingsError },
+      { data: variants, error: variantsError }
+    ] = await Promise.all([
+      runStep("payment_settings", () =>
+        supabase
+          .from("payment_settings")
+          .select("active_gateway")
+          .eq("id", 1)
+          .single()
+      ),
+      runStep("product_variants", () =>
         supabase
           .from("product_variants")
           .select(`
@@ -667,7 +588,65 @@ export default async function handler(req: any, res: any) {
             is_active
           `)
           .in("id", variantIds)
-    );
+      )
+    ]);
+
+    if (settingsError || !paymentSettings) {
+      console.error(
+        "CHECKOUT: Erro ao consultar payment_settings.",
+        settingsError?.code || "UNKNOWN"
+      );
+
+      return res.status(500).json({
+        error: "Não foi possível identificar o meio de pagamento."
+      });
+    }
+
+    const configuredGateway =
+      paymentSettings.active_gateway as Gateway;
+
+    if (!["mercadopago", "bravopay"].includes(configuredGateway)) {
+      return res.status(500).json({
+        error: "Gateway de pagamento inválido."
+      });
+    }
+
+    if (configuredGateway === "bravopay") {
+      if (customerPhone.length < 10 || customerPhone.length > 13) {
+        return res.status(400).json({
+          error: "Informe um telefone válido com DDD."
+        });
+      }
+
+      if (!isValidCPF(customerCPF)) {
+        return res.status(400).json({
+          error: "Informe um CPF válido."
+        });
+      }
+
+      if (!process.env.BRAVOPAY_API_KEY) {
+        console.error("CHECKOUT: BRAVOPAY_API_KEY ausente.");
+
+        return res.status(500).json({
+          error: "A configuração da BravoPay está incompleta."
+        });
+      }
+    }
+
+    if (
+      configuredGateway === "mercadopago" &&
+      !process.env.MP_ACCESS_TOKEN
+    ) {
+      console.error("CHECKOUT: MP_ACCESS_TOKEN ausente.");
+
+      return res.status(500).json({
+        error: "A configuração do Mercado Pago está incompleta."
+      });
+    }
+
+    trace("gateway_selected", {
+      gateway: configuredGateway
+    });
 
     if (variantsError || !variants) {
       console.error(
@@ -1083,11 +1062,9 @@ export default async function handler(req: any, res: any) {
     };
 
     let existingTransaction: any = null;
+    let lookupConfirmedNoTransaction = false;
 
-    // =====================================================
-    // 11. RECUPERAR TRANSAÇÃO EXISTENTE
-    // =====================================================
-
+    // Só uma resposta válida que confirme ausência autoriza nova criação.
     if (!newlyCreated) {
       trace("bravo_lookup_started");
 
@@ -1096,14 +1073,12 @@ export default async function handler(req: any, res: any) {
           "bravo_lookup",
           () =>
             fetch(
-              `${BRAVOPAY_URL}/transactions?external_reference=${encodeURIComponent(
-                order.id
-              )}`,
+              BRAVOPAY_URL +
+                "/transactions?external_reference=" +
+                encodeURIComponent(order.id),
               {
                 method: "GET",
-                signal: AbortSignal.timeout(
-                  BRAVO_LOOKUP_TIMEOUT_MS
-                ),
+                signal: AbortSignal.timeout(BRAVO_LOOKUP_TIMEOUT_MS),
                 headers: bravoHeaders
               }
             )
@@ -1111,16 +1086,21 @@ export default async function handler(req: any, res: any) {
 
         if (lookupResponse.ok) {
           const lookupData = await readJson(lookupResponse);
-
-          existingTransaction = getValidBravoTransaction(
+          const lookupResult = getBravoTransactionForOrder(
             lookupData,
-            order.id,
-            totalCents
+            order.id
           );
+
+          existingTransaction = lookupResult.transaction;
+          lookupConfirmedNoTransaction =
+            lookupResult.confirmedNoMatch;
 
           trace("bravo_lookup_result", {
             httpStatus: lookupResponse.status,
-            transactionFound: Boolean(existingTransaction)
+            transactionFound: Boolean(existingTransaction),
+            confirmedNoTransaction: lookupConfirmedNoTransaction,
+            responseUsable:
+              Boolean(existingTransaction) || lookupConfirmedNoTransaction
           });
         } else {
           trace("bravo_lookup_http_error", {
@@ -1135,7 +1115,8 @@ export default async function handler(req: any, res: any) {
 
         console.error(
           "CHECKOUT: Consulta BravoPay inconclusiva.",
-          getErrorName(lookupError)
+          getErrorName(lookupError),
+          getErrorCode(lookupError) || ""
         );
       }
     }
@@ -1145,6 +1126,40 @@ export default async function handler(req: any, res: any) {
     // =====================================================
 
     if (existingTransaction) {
+      const transactionId = String(existingTransaction.id || "");
+      const transactionAmount = Number(existingTransaction.amount_cents);
+
+      if (!transactionId || transactionAmount !== totalCents) {
+        trace("bravo_lookup_transaction_mismatch", {
+          httpStatus: 200,
+          amountMatches: transactionAmount === totalCents,
+          transactionIdPresent: Boolean(transactionId)
+        });
+
+        return pendingPayment(
+          res,
+          order.id,
+          "Encontramos uma transação vinculada a este pedido, mas não foi possível validar os dados. Não gere outro PIX; tente recuperar esta tentativa novamente."
+        );
+      }
+
+      if (
+        CHECKOUT_FUNCTION_TIMEOUT_MS - (Date.now() - requestStartedAt) <
+        SUPABASE_TIMEOUT_MS + FINALIZATION_RESERVE_MS
+      ) {
+        trace("bravo_recovery_save_skipped_deadline", {
+          remainingMs:
+            CHECKOUT_FUNCTION_TIMEOUT_MS -
+            (Date.now() - requestStartedAt)
+        });
+
+        return pendingPayment(
+          res,
+          order.id,
+          "Encontramos sua cobrança e ela permanece preservada. Tente recuperar o PIX novamente em instantes."
+        );
+      }
+
       const saved = await runStep(
         "bravo_transaction_recovery_save",
         () =>
@@ -1155,11 +1170,12 @@ export default async function handler(req: any, res: any) {
           )
       );
 
-      if (!saved) {
+      if (!saved || typeof existingTransaction?.pix?.copy_paste !== "string" ||
+          !existingTransaction.pix.copy_paste.length) {
         return pendingPayment(
           res,
           order.id,
-          "Encontramos sua cobrança, mas estamos sincronizando o pagamento."
+          "Encontramos sua cobrança, mas o PIX ainda não está disponível para recuperação. Não faça outro pagamento e tente novamente em instantes."
         );
       }
 
@@ -1176,9 +1192,40 @@ export default async function handler(req: any, res: any) {
       );
     }
 
+    if (!newlyCreated && !lookupConfirmedNoTransaction) {
+      trace("bravo_creation_blocked_unconfirmed_lookup");
+
+      return pendingPayment(
+        res,
+        order.id,
+        "Não foi possível confirmar se já existe uma cobrança para este pedido. Não gere outro PIX; tente recuperar esta tentativa novamente em instantes."
+      );
+    }
+
     // =====================================================
     // 13. CRIAR PIX NA BRAVOPAY
     // =====================================================
+
+    const remainingMsBeforeCreate =
+      CHECKOUT_FUNCTION_TIMEOUT_MS -
+      (Date.now() - requestStartedAt);
+    const requiredMsForCreate =
+      BRAVO_CREATE_TIMEOUT_MS +
+      SUPABASE_TIMEOUT_MS +
+      FINALIZATION_RESERVE_MS;
+
+    if (remainingMsBeforeCreate < requiredMsForCreate) {
+      trace("bravo_create_skipped_deadline", {
+        remainingMs: remainingMsBeforeCreate,
+        requiredMs: requiredMsForCreate
+      });
+
+      return pendingPayment(
+        res,
+        order.id,
+        "Sua tentativa está preservada e o resultado segue em verificação. Tente recuperar este mesmo pedido em instantes; não inicie outra compra."
+      );
+    }
 
     trace("bravo_create_started", {
       timeoutMs: BRAVO_CREATE_TIMEOUT_MS
@@ -1279,6 +1326,25 @@ export default async function handler(req: any, res: any) {
     // =====================================================
     // 14. SALVAR ID DA TRANSAÇÃO
     // =====================================================
+
+    const remainingMsBeforeSave =
+      CHECKOUT_FUNCTION_TIMEOUT_MS -
+      (Date.now() - requestStartedAt);
+
+    if (
+      remainingMsBeforeSave <
+      SUPABASE_TIMEOUT_MS + FINALIZATION_RESERVE_MS
+    ) {
+      trace("bravo_transaction_save_skipped_deadline", {
+        remainingMs: remainingMsBeforeSave
+      });
+
+      return pendingPayment(
+        res,
+        order.id,
+        "A cobrança foi criada e permanece preservada. Tente recuperar o PIX novamente em instantes."
+      );
+    }
 
     const saved = await runStep(
       "bravo_transaction_save",
