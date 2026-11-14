@@ -397,7 +397,7 @@ export default function Checkout() {
 
   const pixStatus = String(pixPayment?.status || "PENDING").toUpperCase();
   const isPixPaid = pixStatus === "PAID";
-  const isPixTerminal = ["EXPIRED", "REFUNDED", "CHARGEBACK"].includes(
+  const isPixTerminal = ["EXPIRED", "FAILED", "REFUNDED", "CHARGEBACK"].includes(
     pixStatus
   );
   const canPayWithPix = !isPixPaid && !isPixTerminal;
@@ -405,7 +405,9 @@ export default function Checkout() {
   const pixStatusLabel =
     pixStatus === "EXPIRED"
       ? "PIX expirado"
-      : pixStatus === "REFUNDED"
+      : pixStatus === "FAILED"
+        ? "Pagamento não concluído"
+        : pixStatus === "REFUNDED"
         ? "Pagamento estornado"
         : pixStatus === "CHARGEBACK"
           ? "Pagamento contestado"
@@ -416,7 +418,9 @@ export default function Checkout() {
   const pixStatusMessage =
     pixStatus === "EXPIRED"
       ? "Esta cobrança expirou. Não tente pagar este código PIX."
-      : pixStatus === "REFUNDED"
+      : pixStatus === "FAILED"
+        ? "Esta cobrança não foi concluída. Não tente pagá-la novamente."
+        : pixStatus === "REFUNDED"
         ? "Este pagamento foi estornado."
         : pixStatus === "CHARGEBACK"
           ? "Este pagamento está contestado."
