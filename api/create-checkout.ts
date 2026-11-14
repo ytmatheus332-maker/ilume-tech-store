@@ -637,6 +637,12 @@ export default async function handler(req: any, res: any) {
     const configuredGateway =
       paymentSettings.active_gateway as Gateway;
 
+    if (configuredGateway === "bravopay" && totalCents < 500) {
+      return res.status(400).json({
+        error: "O valor mínimo para gerar um PIX é R$ 5,00."
+      });
+    }
+
     if (!["mercadopago", "bravopay"].includes(configuredGateway)) {
       return res.status(500).json({
         error: "Gateway de pagamento inválido."
@@ -857,7 +863,7 @@ export default async function handler(req: any, res: any) {
       trace("order_validation_failed");
 
       return res.status(409).json({
-        error: "Esta tentativa já está vinculada a outro pedido. Inicie uma nova compra."
+        error: "Esta tentativa continua vinculada a um pedido anterior. Use os mesmos dados e itens para recuperar a cobrança; não inicie outra compra enquanto o resultado estiver em verificação."
       });
     }
 
@@ -867,7 +873,9 @@ export default async function handler(req: any, res: any) {
       )
     ) {
       return res.status(409).json({
-        error: "Este pedido não pode ser reutilizado. Inicie uma nova compra."
+        terminal: true,
+        orderId: order.id,
+        error: "Esta tentativa foi encerrada e não pode ser reutilizada. Você pode iniciar uma nova compra."
       });
     }
 
