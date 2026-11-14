@@ -1,82 +1,605 @@
-import { useState } from "react";
-import { useCart } from "../context/CartContext";
+
+import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Lock } from "lucide-react";
+import {
+  ArrowLeft,
+  Lock,
+  ShieldCheck,
+  Copy,
+  CheckCircle2,
+  QrCode,
+  Clock3,
+  ShoppingBag,
+  AlertCircle,
+} from "lucide-react";
+import * as QRCode from "qrcode";
+
+import { useCart } from "../context/CartContext";
 import "./Checkout.css";
 
+type Gateway = "mercadopago" | "bravopay";
+
+interface PixPayment {
+  orderId: string;
+  transactionId: string;
+  status: string;
+  amountCents: number;
+  copyPaste: string;
+  expiresAt: string | null;
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
+}
+
+function formatExpiration(value: string | null): string {
+  if (!value) return "Consulte a validade no aplicativo do seu banco.";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Consulte a validade no aplicativo do seu banco.";
+  }
+
+  return date.toLocaleString("pt-BR");
+}
+
 export default function Checkout() {
-  const cartContext = useCart();
-  const cart = cartContext?.cart || [];
-  const clearCart = cartContext?.clearCart || (() => {});
+  const { cart, clearCart, total } = useCart();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [cpf, setCpf] = useState("");
+
+  const [gateway, setGateway] = useState<Gateway | null>(null);
+  const [gatewayLoading, setGatewayLoading] = useState(true);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleFinishCheckout(e: React.FormEvent) {
-    e.preventDefault();
-    if (cart.length === 0) return alert("Seu carrinho está vazio.");
-    if (!name || !email) return alert("Preencha nome e e-mail.");
+  const [pixPayment, setPixPayment] = useState<PixPayment | null>(null);
+  const [qrCodeImage, setQrCodeImage] = useState("");
+  const [qrCodeError, setQrCodeError] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadGateway() {
+      try {
+        setGatewayLoading(true);
+        setError(null);
+
+        const response = await fetch("/api/create-checkout", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(
+            data.error || "Não foi possível consultar o pagamento."
+          );
+        }
+
+        if (
+          data.gateway !== "mercadopago" &&
+          data.gateway !== "bravopay"
+        ) {
+          throw new Error("O meio de pagamento configurado é inválido.");
+        }
+
+        if (active) {
+          setGateway(data.gateway);
+        }
+      } catch (err) {
+        if (active) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Não foi possível carregar o checkout."
+          );
+        }
+      } finally {
+        if (active) {
+          setGatewayLoading(false);
+        }
+      }
+    }
+
+    loadGateway();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function handleFinishCheckout(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (cart.length === 0) {
+      setError("Seu carrinho está vazio.");
+      return;
+    }
+
+    if (!gateway) {
+      setError("O meio de pagamento ainda não foi identificado.");
+      return;
+    }
+
+    if (pixPayment) {
+      return;
+    }
+
+    if (!name.trim() || !email.trim()) {
+      setError("Preencha seu nome e e-mail.");
+      return;
+    }
+
+    if (gateway === "bravopay" && (!phone.trim() || !cpf.trim())) {
+      setError("Preencha seu telefone e CPF.");
+      return;
+    }
 
     try {
       setLoading(true);
       setError(null);
-      const itemsPayload = cart.map((item: any) => ({
+
+      const itemsPayload = cart.map((item) => ({
         variantId: item.variantId || item.id,
         quantity: item.quantity || 1,
       }));
 
       const response = await fetch("/api/create-checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          customer: { name, email },
+          customer: {
+            name: name.trim(),
+            email: email.trim(),
+            phone,
+            cpf,
+          },
           items: itemsPayload,
-          gateway: "mercadopago",
         }),
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Falha ao iniciar pagamento.");
 
-      if (data.paymentUrl) {
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error || "Não foi possível iniciar o pagamento."
+        );
+      }
+
+      if (data.gateway === "mercadopago") {
+        if (!data.paymentUrl) {
+          throw new Error("O Mercado Pago não retornou o link de pagamento.");
+        }
+
         clearCart();
         window.location.href = data.paymentUrl;
+        return;
       }
-    } catch (err: any) {
-      setError(err.message);
+
+      if (
+        data.gateway === "bravopay" &&
+        data.payment?.copyPaste &&
+        data.orderId &&
+        data.transactionId
+      ) {
+        const payment: PixPayment = {
+          orderId: data.orderId,
+          transactionId: data.transactionId,
+          status: data.payment.status || "PENDING",
+          amountCents: Number(data.payment.amountCents),
+          copyPaste: data.payment.copyPaste,
+          expiresAt: data.payment.expiresAt || null,
+        };
+
+        // Mantém o pedido e o carrinho enquanto o pagamento está pendente.
+        setPixPayment(payment);
+
+        try {
+          const image = await QRCode.toDataURL(payment.copyPaste, {
+            errorCorrectionLevel: "M",
+            margin: 2,
+            width: 260,
+          });
+
+          setQrCodeImage(image);
+        } catch (qrError) {
+          console.error("ILUME: Erro ao gerar QR Code.", qrError);
+          setQrCodeError(true);
+        }
+
+        return;
+      }
+
+      throw new Error("A resposta do gateway possui um formato inesperado.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Ocorreu um erro ao processar o pedido."
+      );
+    } finally {
       setLoading(false);
     }
   }
 
-  if (cart.length === 0) {
+  async function handleCopyPix() {
+    if (!pixPayment?.copyPaste) return;
+
+    try {
+      await navigator.clipboard.writeText(pixPayment.copyPaste);
+      setCopied(true);
+
+      window.setTimeout(() => {
+        setCopied(false);
+      }, 2500);
+    } catch {
+      setError(
+        "Não foi possível copiar automaticamente. Selecione e copie o código PIX."
+      );
+    }
+  }
+
+  if (cart.length === 0 && !pixPayment) {
     return (
-      <main style={{ padding: "8rem 2rem", textAlign: "center", fontFamily: "'Inter', sans-serif" }}>
-        <h2>Sua sacola está vazia.</h2>
-        <Link to="/" style={{ padding: "0.8rem 1.5rem", background: "#000", color: "#fff", textDecoration: "none", borderRadius: "6px" }}>Voltar para a Loja</Link>
+      <main className="checkout-page">
+        <div className="checkout-empty">
+          <ShoppingBag size={42} strokeWidth={1.3} />
+          <h1>Sua sacola está vazia.</h1>
+          <p>Adicione produtos antes de finalizar seu pedido.</p>
+          <Link to="/">Voltar para a loja</Link>
+        </div>
       </main>
     );
   }
 
   return (
-    <main style={{ padding: "4rem 2rem", maxWidth: "1000px", margin: "0 auto", fontFamily: "'Inter', sans-serif", color: "#171717" }}>
-      <Link to="/carrinho" style={{ display: "inline-flex", alignItems: "center", gap: "8px", textDecoration: "none", color: "#666", fontSize: "0.85rem", marginBottom: "3rem" }}>
-        <ArrowLeft size={14} /> Voltar para a sacola
-      </Link>
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "4rem" }}>
-        <div style={{ background: "#fff", padding: "2.5rem", borderRadius: "12px", border: "1px solid #eaeaea" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#166534", marginBottom: "0.5rem" }}><Lock size={14} /> <span style={{ fontSize: "0.75rem", fontWeight: "700" }}>CHECKOUT SEGURO</span></div>
-          <h1 style={{ fontSize: "2rem", marginBottom: "1.5rem" }}>Finalizar Pedido</h1>
-          {error && <div style={{ background: "#fee2e2", color: "#991b1b", padding: "1rem", borderRadius: "6px", marginBottom: "1rem" }}>{error}</div>}
-          <form onSubmit={handleFinishCheckout} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <input type="text" placeholder="Nome Completo" value={name} onChange={e => setName(e.target.value)} style={{ padding: "0.9rem", border: "1px solid #ddd", borderRadius: "6px" }} required />
-            <input type="email" placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} style={{ padding: "0.9rem", border: "1px solid #ddd", borderRadius: "6px" }} required />
-            <button type="submit" disabled={loading} style={{ padding: "1rem", background: "#000", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", cursor: "pointer" }}>
-              {loading ? "Processando..." : "Ir para o Pagamento"}
-            </button>
-          </form>
-        </div>
+    <main className="checkout-page">
+      <div className="checkout-container">
+        <Link to="/carrinho" className="checkout-back">
+          <ArrowLeft size={14} />
+          Voltar para a sacola
+        </Link>
+
+        {pixPayment ? (
+          <section className="checkout-pix-panel">
+            <div className="checkout-pix-icon">
+              <QrCode size={34} />
+            </div>
+
+            <span className="checkout-confirmation-brand">
+              ILUME TECH STORE
+            </span>
+
+            <h1>Finalize seu pagamento</h1>
+
+            <p className="checkout-pix-description">
+              Seu pedido foi registrado. Escaneie o QR Code ou copie o código
+              PIX para realizar o pagamento.
+            </p>
+
+            <div className="checkout-pix-status">
+              <Clock3 size={18} />
+              <div>
+                <strong>Pagamento aguardando confirmação</strong>
+                <p>O pedido ainda não está confirmado.</p>
+              </div>
+            </div>
+
+            <div className="checkout-pix-order">
+              <span>NÚMERO DO PEDIDO</span>
+              <strong>{pixPayment.orderId}</strong>
+            </div>
+
+            <div className="checkout-pix-qr">
+              {qrCodeImage ? (
+                <img
+                  src={qrCodeImage}
+                  alt="QR Code para pagamento PIX"
+                />
+              ) : (
+                <div className="checkout-pix-qr-placeholder">
+                  {qrCodeError ? (
+                    <AlertCircle size={32} />
+                  ) : (
+                    <QrCode size={32} />
+                  )}
+                  <span>
+                    {qrCodeError
+                      ? "QR Code indisponível. Utilize o código PIX abaixo."
+                      : "Preparando QR Code..."}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="checkout-pix-amount">
+              <span>VALOR DO PEDIDO</span>
+              <strong>
+                {formatCurrency(pixPayment.amountCents / 100)}
+              </strong>
+            </div>
+
+            <div className="checkout-pix-copy">
+              <label htmlFor="pix-copy-paste">
+                PIX copia e cola
+              </label>
+
+              <textarea
+                id="pix-copy-paste"
+                value={pixPayment.copyPaste}
+                readOnly
+                rows={4}
+              />
+
+              <button
+                type="button"
+                className="checkout-submit checkout-pix-copy-button"
+                onClick={handleCopyPix}
+              >
+                {copied ? (
+                  <>
+                    <CheckCircle2 size={17} />
+                    Código copiado
+                  </>
+                ) : (
+                  <>
+                    <Copy size={17} />
+                    Copiar código PIX
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="checkout-pix-expiration">
+              <Clock3 size={15} />
+              <span>
+                Validade informada: {formatExpiration(pixPayment.expiresAt)}
+              </span>
+            </div>
+
+            <p className="checkout-pix-disclaimer">
+              Após pagar, aguarde a confirmação do pagamento. Não realize
+              outro pagamento para este pedido.
+            </p>
+
+            <Link to="/" className="checkout-confirmation-button">
+              Voltar para a loja
+            </Link>
+          </section>
+        ) : (
+          <>
+            <header className="checkout-heading">
+              <span>ILUME TECH STORE</span>
+              <h1>Finalizar pedido</h1>
+              <p>
+                Informe seus dados para continuar com segurança.
+              </p>
+            </header>
+
+            {error && (
+              <div className="checkout-alert" role="alert">
+                <AlertCircle size={18} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="checkout-layout">
+              <form
+                className="checkout-form"
+                onSubmit={handleFinishCheckout}
+              >
+                <section className="checkout-section">
+                  <div className="checkout-section-heading">
+                    <span>01</span>
+                    <div>
+                      <h2>Dados pessoais</h2>
+                      <p>Preencha as informações do comprador.</p>
+                    </div>
+                  </div>
+
+                  <div className="checkout-fields">
+                    <label className="checkout-field checkout-field-full">
+                      Nome completo
+                      <input
+                        type="text"
+                        placeholder="Seu nome completo"
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                        minLength={3}
+                        maxLength={150}
+                        autoComplete="name"
+                        required
+                        disabled={loading || gatewayLoading}
+                      />
+                    </label>
+
+                    <label className="checkout-field checkout-field-full">
+                      E-mail
+                      <input
+                        type="email"
+                        placeholder="seu@email.com"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        maxLength={254}
+                        autoComplete="email"
+                        required
+                        disabled={loading || gatewayLoading}
+                      />
+                    </label>
+
+                    {gateway === "bravopay" && (
+                      <>
+                        <label className="checkout-field">
+                          Telefone com DDD
+                          <input
+                            type="tel"
+                            placeholder="(00) 00000-0000"
+                            value={phone}
+                            onChange={(event) => setPhone(event.target.value)}
+                            autoComplete="tel"
+                            inputMode="tel"
+                            required
+                            disabled={loading}
+                          />
+                        </label>
+
+                        <label className="checkout-field">
+                          CPF
+                          <input
+                            type="text"
+                            placeholder="000.000.000-00"
+                            value={cpf}
+                            onChange={(event) => setCpf(event.target.value)}
+                            autoComplete="off"
+                            inputMode="numeric"
+                            maxLength={14}
+                            required
+                            disabled={loading}
+                          />
+                        </label>
+                      </>
+                    )}
+                  </div>
+                </section>
+
+                <section className="checkout-section checkout-payment-section">
+                  <div className="checkout-section-heading">
+                    <span>02</span>
+                    <div>
+                      <h2>Meio de pagamento</h2>
+                      <p>
+                        O pagamento é processado pelo gateway configurado
+                        pela administração da ILUME.
+                      </p>
+                    </div>
+                  </div>
+
+                  {gatewayLoading ? (
+                    <div className="checkout-loading">
+                      Consultando meio de pagamento...
+                    </div>
+                  ) : gateway === "mercadopago" ? (
+                    <div className="checkout-payment-option checkout-payment-option-selected">
+                      <div className="checkout-payment-icon">
+                        <Lock size={21} />
+                      </div>
+                      <div className="checkout-payment-info">
+                        <strong>Mercado Pago</strong>
+                        <small>
+                          Você será direcionado ao ambiente seguro do
+                          Mercado Pago para concluir o pagamento.
+                        </small>
+                      </div>
+                    </div>
+                  ) : gateway === "bravopay" ? (
+                    <div className="checkout-payment-option checkout-payment-option-selected">
+                      <div className="checkout-payment-icon">
+                        <QrCode size={23} />
+                      </div>
+                      <div className="checkout-payment-info">
+                        <strong>PIX</strong>
+                        <small>
+                          Gere seu QR Code e pague pelo aplicativo do seu banco.
+                        </small>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="checkout-loading">
+                      Não foi possível identificar o gateway.
+                    </div>
+                  )}
+
+                  <div className="checkout-payment-security">
+                    <ShieldCheck size={16} />
+                    Ambiente de pagamento protegido.
+                  </div>
+                </section>
+
+                <button
+                  type="submit"
+                  className="checkout-submit"
+                  disabled={loading || gatewayLoading || !gateway}
+                >
+                  {loading
+                    ? "Processando pedido..."
+                    : gatewayLoading
+                      ? "Carregando pagamento..."
+                      : gateway === "bravopay"
+                        ? "Gerar pagamento PIX"
+                        : "Ir para o pagamento"}
+                </button>
+
+                <p className="checkout-security">
+                  <Lock size={13} />
+                  Seus dados são transmitidos com segurança.
+                </p>
+              </form>
+
+              <aside className="checkout-summary">
+                <span>RESUMO</span>
+                <h2>Seu pedido</h2>
+
+                <div className="checkout-products">
+                  {cart.map((item) => (
+                    <div
+                      className="checkout-product"
+                      key={item.variantId || item.id}
+                    >
+                      {item.image ? (
+                        <img src={item.image} alt={item.name} />
+                      ) : (
+                        <div className="checkout-product-placeholder">
+                          <ShoppingBag size={20} />
+                        </div>
+                      )}
+
+                      <div>
+                        <strong>{item.name}</strong>
+                        <span>
+                          {item.color || "Padrão"}
+                          {item.storage ? ` · ${item.storage} GB` : ""}
+                        </span>
+                        <span>Quantidade: {item.quantity}</span>
+                      </div>
+
+                      <strong>
+                        {formatCurrency(item.price * item.quantity)}
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="checkout-total">
+                  <span>Subtotal</span>
+                  <strong>{formatCurrency(total)}</strong>
+                </div>
+
+                <div className="checkout-grand-total">
+                  <span>Total</span>
+                  <strong>{formatCurrency(total)}</strong>
+                </div>
+
+                <p>
+                  O valor final é validado pelo servidor com base nos preços
+                  cadastrados no catálogo da ILUME.
+                </p>
+              </aside>
+            </div>
+          </>
+        )}
       </div>
     </main>
   );
