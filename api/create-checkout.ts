@@ -3,12 +3,9 @@ import { createClient } from "@supabase/supabase-js";
 
 const BRAVOPAY_URL = "https://bravopay.club/api/v1";
 const DEFAULT_STORE_URL = "https://ilume-tech-store.vercel.app";
-const REQUEST_TIMEOUT_MS = 15000;
 
-// Proteção temporária: este pedido só pode recuperar uma cobrança.
-// Nunca poderá criar uma nova transação durante nosso teste.
-const TEST_RECOVERY_ONLY_ORDER_ID =
-  "031186ae-b8de-41c9-b583-79382f356c41";
+const REQUEST_TIMEOUT_MS = 7000;
+const SUPABASE_TIMEOUT_MS = 5000;
 
 type Gateway = "mercadopago" | "bravopay";
 
@@ -55,6 +52,7 @@ function isValidCPF(value: string): boolean {
     }
 
     const remainder = (total * 10) % 11;
+
     return remainder === 10 ? 0 : remainder;
   };
 
@@ -78,24 +76,6 @@ function getProductName(products: unknown): string {
 
 async function readJson(response: Response): Promise<any> {
   return response.json().catch(() => null);
-}
-
-async function markOrderFailed(
-  supabase: any,
-  orderId: string
-): Promise<void> {
-  const { error } = await supabase
-    .from("orders")
-    .update({ status: "failed" })
-    .eq("id", orderId)
-    .eq("status", "pending");
-
-  if (error) {
-    console.error(
-      "CHECKOUT: Não foi possível atualizar o pedido para failed.",
-      error
-    );
-  }
 }
 
 function sameItems(
@@ -130,25 +110,28 @@ function sameItems(
 async function ensureOrderItems(
   supabase: any,
   orderId: string,
-  items: ValidatedItem[]
+  items: ValidatedItem[],
+  newlyCreated: boolean
 ): Promise<boolean> {
-  const { data: existingItems, error: readError } =
-    await supabase
-      .from("order_items")
-      .select("product_variant_id, quantity, unit_price_cents")
-      .eq("order_id", orderId);
+  if (!newlyCreated) {
+    const { data: existingItems, error: readError } =
+      await supabase
+        .from("order_items")
+        .select("product_variant_id, quantity, unit_price_cents")
+        .eq("order_id", orderId);
 
-  if (readError) {
-    console.error(
-      "CHECKOUT: Erro ao consultar itens do pedido.",
-      readError
-    );
+    if (readError) {
+      console.error(
+        "CHECKOUT: Erro ao consultar itens existentes.",
+        readError.code || "UNKNOWN"
+      );
 
-    return false;
-  }
+      return false;
+    }
 
-  if (existingItems?.length) {
-    return sameItems(existingItems, items);
+    if (existingItems?.length) {
+      return sameItems(existingItems, items);
+    }
   }
 
   const rows = items.map((item) => ({
@@ -179,11 +162,29 @@ async function ensureOrderItems(
   }
 
   console.error(
-    "CHECKOUT: Erro ao registrar itens do pedido.",
-    insertError
+    "CHECKOUT: Erro ao registrar itens.",
+    insertError.code || "UNKNOWN"
   );
 
   return false;
+}
+
+async function markOrderFailed(
+  supabase: any,
+  orderId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("orders")
+    .update({ status: "failed" })
+    .eq("id", orderId)
+    .eq("status", "pending");
+
+  if (error) {
+    console.error(
+      "CHECKOUT: Não foi possível atualizar o pedido.",
+      error.code || "UNKNOWN"
+    );
+  }
 }
 
 function getBravoTransactions(data: any): any[] {
@@ -231,18 +232,20 @@ async function saveBravoTransaction(
   orderId: string,
   transaction: any
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("orders")
     .update({
       gateway_payment_id: String(transaction.id)
     })
     .eq("id", orderId)
-    .eq("gateway", "bravopay");
+    .eq("gateway", "bravopay")
+    .select("id")
+    .maybeSingle();
 
-  if (error) {
+  if (error || !data) {
     console.error(
-      "CHECKOUT: Não foi possível salvar o ID da transação BravoPay.",
-      error
+      "CHECKOUT: Não foi possível vincular a transação BravoPay.",
+      error?.code || "ORDER_NOT_UPDATED"
     );
 
     return false;
@@ -267,8 +270,23 @@ function returnBravoPayment(
       status: transaction.status || "PENDING",
       amountCents: totalCents,
       copyPaste: transaction.pix.copy_paste,
+      qrCode: transaction.pix.qr_code || null,
+      qrCodeBase64: transaction.pix.qr_code_base64 || null,
       expiresAt: transaction.pix.expires_at || null
     }
+  });
+}
+
+function pendingPayment(
+  res: any,
+  orderId: string,
+  message: string
+) {
+  return res.status(202).json({
+    success: false,
+    pending: true,
+    orderId,
+    error: message
   });
 }
 
@@ -293,12 +311,20 @@ export default async function handler(req: any, res: any) {
     process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
   if (!supabaseUrl || !supabaseServiceKey) {
-    console.error("CHECKOUT: Variáveis do Supabase ausentes.");
+    console.error("CHECKOUT: Configuração do Supabase ausente.");
 
     return res.status(500).json({
       error: "Erro de configuração do servidor."
     });
   }
+
+  // Limita o tempo das requisições feitas pelo Supabase.
+  const supabaseFetch: typeof fetch = async (input, init = {}) => {
+    return fetch(input, {
+      ...init,
+      signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS)
+    });
+  };
 
   const supabase = createClient(
     supabaseUrl,
@@ -307,6 +333,9 @@ export default async function handler(req: any, res: any) {
       auth: {
         persistSession: false,
         autoRefreshToken: false
+      },
+      global: {
+        fetch: supabaseFetch
       }
     }
   );
@@ -314,7 +343,9 @@ export default async function handler(req: any, res: any) {
   let orderId: string | null = null;
 
   try {
-    // 1. Consultar gateway ativo.
+    // =====================================================
+    // 1. GET: CONSULTAR GATEWAY ATIVO
+    // =====================================================
 
     if (req.method === "GET") {
       const { data, error } = await supabase
@@ -326,7 +357,7 @@ export default async function handler(req: any, res: any) {
       if (error || !data) {
         console.error(
           "CHECKOUT: Erro ao consultar gateway.",
-          error
+          error?.code || "UNKNOWN"
         );
 
         return res.status(500).json({
@@ -348,7 +379,9 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 2. Validar dados recebidos.
+    // =====================================================
+    // 2. VALIDAR DADOS RECEBIDOS
+    // =====================================================
 
     const {
       customer,
@@ -397,7 +430,9 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 3. Consultar gateway configurado.
+    // =====================================================
+    // 3. CONSULTAR GATEWAY CONFIGURADO
+    // =====================================================
 
     const {
       data: paymentSettings,
@@ -411,7 +446,7 @@ export default async function handler(req: any, res: any) {
     if (settingsError || !paymentSettings) {
       console.error(
         "CHECKOUT: Erro ao consultar payment_settings.",
-        settingsError
+        settingsError?.code || "UNKNOWN"
       );
 
       return res.status(500).json({
@@ -430,7 +465,9 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 4. Consolidar quantidades.
+    // =====================================================
+    // 4. CONSOLIDAR QUANTIDADES
+    // =====================================================
 
     const quantities = new Map<string, number>();
 
@@ -440,6 +477,7 @@ export default async function handler(req: any, res: any) {
 
       if (
         !variantId ||
+        !isValidUUID(variantId) ||
         !Number.isInteger(quantity) ||
         quantity < 1 ||
         quantity > 10
@@ -461,28 +499,53 @@ export default async function handler(req: any, res: any) {
       quantities.set(variantId, accumulated);
     }
 
-    // 5. Validar preços e disponibilidade no banco.
+    // =====================================================
+    // 5. CONSULTAR TODAS AS VARIANTES EM UMA ÚNICA CHAMADA
+    // =====================================================
+
+    const variantIds = Array.from(quantities.keys());
+
+    const {
+      data: variants,
+      error: variantsError
+    } = await supabase
+      .from("product_variants")
+      .select(`
+        id,
+        price_cents,
+        products(name),
+        color,
+        storage_gb,
+        availability_status,
+        is_active
+      `)
+      .in("id", variantIds);
+
+    if (variantsError || !variants) {
+      console.error(
+        "CHECKOUT: Erro ao consultar variantes.",
+        variantsError?.code || "UNKNOWN"
+      );
+
+      return res.status(500).json({
+        error: "Não foi possível validar os produtos do pedido."
+      });
+    }
+
+    const variantsMap = new Map(
+      variants.map((variant: any) => [
+        variant.id,
+        variant
+      ])
+    );
 
     const validatedItems: ValidatedItem[] = [];
     let totalCents = 0;
 
     for (const [variantId, quantity] of quantities.entries()) {
-      const { data: variant, error: variantError } =
-        await supabase
-          .from("product_variants")
-          .select(`
-            id,
-            price_cents,
-            products(name),
-            color,
-            storage_gb,
-            availability_status,
-            is_active
-          `)
-          .eq("id", variantId)
-          .single();
+      const variant: any = variantsMap.get(variantId);
 
-      if (variantError || !variant) {
+      if (!variant) {
         return res.status(400).json({
           error: "Um produto do carrinho não está disponível."
         });
@@ -540,9 +603,12 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 6. Recuperar pedido existente ou criar um novo.
+    // =====================================================
+    // 6. CRIAR OU RECUPERAR PEDIDO
+    // =====================================================
 
     let order: any = null;
+    let newlyCreated = false;
 
     const {
       data: insertedOrder,
@@ -563,6 +629,7 @@ export default async function handler(req: any, res: any) {
 
     if (!orderInsertError && insertedOrder) {
       order = insertedOrder;
+      newlyCreated = true;
     } else if (orderInsertError?.code === "23505") {
       const {
         data: existingOrder,
@@ -575,8 +642,8 @@ export default async function handler(req: any, res: any) {
 
       if (existingOrderError || !existingOrder) {
         console.error(
-          "CHECKOUT: Não foi possível recuperar o pedido existente.",
-          existingOrderError
+          "CHECKOUT: Erro ao recuperar pedido existente.",
+          existingOrderError?.code || "NOT_FOUND"
         );
 
         return res.status(500).json({
@@ -588,7 +655,7 @@ export default async function handler(req: any, res: any) {
     } else {
       console.error(
         "CHECKOUT: Erro ao registrar pedido.",
-        orderInsertError
+        orderInsertError?.code || "UNKNOWN"
       );
 
       return res.status(500).json({
@@ -598,7 +665,9 @@ export default async function handler(req: any, res: any) {
 
     orderId = order.id;
 
-    // 7. Validar se a chave pertence à mesma compra.
+    // =====================================================
+    // 7. VALIDAR PROPRIEDADE DA TENTATIVA
+    // =====================================================
 
     const orderGateway = order.gateway as Gateway;
 
@@ -614,21 +683,36 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 8. Garantir integridade dos itens.
+    if (
+      ["failed", "refunded", "chargeback"].includes(
+        String(order.status).toLowerCase()
+      )
+    ) {
+      return res.status(409).json({
+        error: "Este pedido não pode ser reutilizado. Inicie uma nova compra."
+      });
+    }
+
+    // =====================================================
+    // 8. REGISTRAR ITENS DO PEDIDO
+    // =====================================================
 
     const itemsReady = await ensureOrderItems(
       supabase,
       order.id,
-      validatedItems
+      validatedItems,
+      newlyCreated
     );
 
     if (!itemsReady) {
       return res.status(500).json({
-        error: "Não foi possível confirmar os produtos do pedido. Tente novamente."
+        error: "Não foi possível confirmar os produtos do pedido."
       });
     }
 
-    // 9. Validar configuração do gateway original do pedido.
+    // =====================================================
+    // 9. VALIDAR CREDENCIAIS DO GATEWAY
+    // =====================================================
 
     if (orderGateway === "bravopay") {
       if (
@@ -670,7 +754,9 @@ export default async function handler(req: any, res: any) {
       process.env.STORE_URL || DEFAULT_STORE_URL
     ).replace(/\/$/, "");
 
-    // 10. Fluxo Mercado Pago.
+    // =====================================================
+    // 10. MERCADO PAGO
+    // =====================================================
 
     if (orderGateway === "mercadopago") {
       if (order.preference_id) {
@@ -704,13 +790,15 @@ export default async function handler(req: any, res: any) {
         }
 
         console.error(
-          "CHECKOUT: Não foi possível recuperar preferência existente.",
-          preferenceData
+          "CHECKOUT: Falha ao recuperar preferência existente.",
+          preferenceResponse.status
         );
 
-        return res.status(502).json({
-          error: "Estamos verificando seu pagamento anterior. Tente novamente em instantes."
-        });
+        return pendingPayment(
+          res,
+          order.id,
+          "Estamos verificando seu pagamento anterior. Tente novamente em instantes."
+        );
       }
 
       const mpResponse = await fetch(
@@ -747,8 +835,8 @@ export default async function handler(req: any, res: any) {
         !mpData?.init_point
       ) {
         console.error(
-          "CHECKOUT: Erro Mercado Pago.",
-          mpData
+          "CHECKOUT: Resposta Mercado Pago inválida.",
+          mpResponse.status
         );
 
         if (
@@ -759,9 +847,11 @@ export default async function handler(req: any, res: any) {
           await markOrderFailed(supabase, order.id);
         }
 
-        return res.status(502).json({
-          error: "Não foi possível confirmar a criação do pagamento. Tente novamente."
-        });
+        return pendingPayment(
+          res,
+          order.id,
+          "Não foi possível confirmar a criação do pagamento. Tente novamente."
+        );
       }
 
       const { error: preferenceError } = await supabase
@@ -773,13 +863,15 @@ export default async function handler(req: any, res: any) {
 
       if (preferenceError) {
         console.error(
-          "CHECKOUT: Erro ao salvar preferência Mercado Pago.",
-          preferenceError
+          "CHECKOUT: Erro ao salvar preferência.",
+          preferenceError.code || "UNKNOWN"
         );
 
-        return res.status(500).json({
-          error: "O pagamento está em verificação. Tente novamente em instantes."
-        });
+        return pendingPayment(
+          res,
+          order.id,
+          "O pagamento está em verificação. Tente novamente em instantes."
+        );
       }
 
       return res.status(200).json({
@@ -790,7 +882,9 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 11. Consultar transação existente na BravoPay.
+    // =====================================================
+    // 11. BRAVOPAY — CONFIGURAÇÃO
+    // =====================================================
 
     const bravoHeaders = {
       "Content-Type": "application/json",
@@ -798,65 +892,47 @@ export default async function handler(req: any, res: any) {
     };
 
     let existingTransaction: any = null;
-    let lookupSucceeded = false;
 
-    try {
-      const lookupResponse = await fetch(
-        `${BRAVOPAY_URL}/transactions?external_reference=${encodeURIComponent(
-          order.id
-        )}`,
-        {
-          method: "GET",
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-          headers: bravoHeaders
+    // Pedidos recuperados consultam primeiro a transação anterior.
+    // Pedidos novos seguem diretamente para a criação do PIX.
+    if (!newlyCreated) {
+      try {
+        const lookupResponse = await fetch(
+          `${BRAVOPAY_URL}/transactions?external_reference=${encodeURIComponent(
+            order.id
+          )}`,
+          {
+            method: "GET",
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            headers: bravoHeaders
+          }
+        );
+
+        if (lookupResponse.ok) {
+          const lookupData = await readJson(lookupResponse);
+
+          existingTransaction = getValidBravoTransaction(
+            lookupData,
+            order.id,
+            totalCents
+          );
+        } else {
+          console.error(
+            "CHECKOUT: Consulta de recuperação BravoPay falhou.",
+            lookupResponse.status
+          );
         }
-      );
-
-      const lookupData = await readJson(lookupResponse);
-
-      if (!lookupResponse.ok) {
+      } catch (lookupError: any) {
         console.error(
-          "CHECKOUT: Consulta BravoPay retornou HTTP não aprovado.",
-          lookupResponse.status,
-          lookupData
+          "CHECKOUT: Consulta BravoPay inconclusiva.",
+          lookupError?.name || "UNKNOWN"
         );
-
-        // No pedido protegido, não continuar para criação.
-        if (order.id === TEST_RECOVERY_ONLY_ORDER_ID) {
-          return res.status(503).json({
-            success: false,
-            pending: true,
-            orderId: order.id,
-            error: "Não foi possível consultar a cobrança existente. Nenhuma nova cobrança foi criada."
-          });
-        }
-      } else {
-        lookupSucceeded = true;
-
-        existingTransaction = getValidBravoTransaction(
-          lookupData,
-          order.id,
-          totalCents
-        );
-      }
-    } catch (lookupError) {
-      console.error(
-        "CHECKOUT: Consulta BravoPay inconclusiva.",
-        lookupError
-      );
-
-      // Pedido de teste: nunca criar cobrança após falha no GET.
-      if (order.id === TEST_RECOVERY_ONLY_ORDER_ID) {
-        return res.status(503).json({
-          success: false,
-          pending: true,
-          orderId: order.id,
-          error: "A consulta da cobrança anterior falhou. Nenhuma nova cobrança foi criada."
-        });
       }
     }
 
-    // 12. Se encontrou a cobrança, sincronizar e retornar PIX.
+    // =====================================================
+    // 12. RECUPERAR PIX EXISTENTE
+    // =====================================================
 
     if (existingTransaction) {
       const saved = await saveBravoTransaction(
@@ -866,12 +942,11 @@ export default async function handler(req: any, res: any) {
       );
 
       if (!saved) {
-        return res.status(202).json({
-          success: false,
-          pending: true,
-          orderId: order.id,
-          error: "Encontramos sua cobrança, mas estamos sincronizando o pagamento. Tente novamente em instantes."
-        });
+        return pendingPayment(
+          res,
+          order.id,
+          "Encontramos sua cobrança, mas estamos sincronizando o pagamento."
+        );
       }
 
       return returnBravoPayment(
@@ -882,45 +957,47 @@ export default async function handler(req: any, res: any) {
       );
     }
 
-    // 13. Proteção do teste:
-    // se a consulta funcionou, mas não encontrou a cobrança,
-    // bloquear qualquer tentativa de criação.
+    // =====================================================
+    // 13. CRIAR PIX NA BRAVOPAY
+    // =====================================================
 
-    if (order.id === TEST_RECOVERY_ONLY_ORDER_ID) {
-      return res.status(409).json({
-        success: false,
-        pending: true,
-        orderId: order.id,
-        lookupSucceeded,
-        error: "A cobrança existente não foi localizada com os dados esperados. Nenhuma nova cobrança foi criada."
-      });
-    }
+    let bravoResponse: Response;
 
-    // 14. Criar PIX para pedidos normais.
-    // O teste protegido acima não consegue chegar até este trecho.
-
-    const bravoResponse = await fetch(
-      `${BRAVOPAY_URL}/transactions`,
-      {
-        method: "POST",
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        headers: {
-          ...bravoHeaders,
-          "Idempotency-Key": checkoutRequestId
-        },
-        body: JSON.stringify({
-          amount_cents: totalCents,
-          method: "pix",
-          customer: {
-            name: customerName,
-            email: customerEmail,
-            phone: customerPhone,
-            cpf: customerCPF
+    try {
+      bravoResponse = await fetch(
+        `${BRAVOPAY_URL}/transactions`,
+        {
+          method: "POST",
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          headers: {
+            ...bravoHeaders,
+            "Idempotency-Key": checkoutRequestId
           },
-          external_reference: order.id
-        })
-      }
-    );
+          body: JSON.stringify({
+            amount_cents: totalCents,
+            method: "pix",
+            customer: {
+              name: customerName,
+              email: customerEmail,
+              phone: customerPhone,
+              cpf: customerCPF
+            },
+            external_reference: order.id
+          })
+        }
+      );
+    } catch (bravoError: any) {
+      console.error(
+        "CHECKOUT: Comunicação com BravoPay inconclusiva.",
+        bravoError?.name || "UNKNOWN"
+      );
+
+      return pendingPayment(
+        res,
+        order.id,
+        "A cobrança está em verificação. Tente recuperar seu PIX em instantes."
+      );
+    }
 
     const bravoData = await readJson(bravoResponse);
     const returnedAmount = Number(bravoData?.amount_cents);
@@ -938,19 +1015,20 @@ export default async function handler(req: any, res: any) {
         "CHECKOUT: Resposta BravoPay não confirmada.",
         {
           httpStatus: bravoResponse.status,
-          response: bravoData
+          responseCode: bravoData?.code || null
         }
       );
 
-      return res.status(502).json({
-        success: false,
-        pending: true,
-        orderId: order.id,
-        error: "Não foi possível confirmar o resultado da cobrança. Sua compra está em verificação. Tente novamente em instantes."
-      });
+      return pendingPayment(
+        res,
+        order.id,
+        "Não foi possível confirmar a cobrança. Sua compra permanece em verificação."
+      );
     }
 
-    // 15. Salvar identificador da transação.
+    // =====================================================
+    // 14. SALVAR ID DA TRANSAÇÃO
+    // =====================================================
 
     const saved = await saveBravoTransaction(
       supabase,
@@ -959,15 +1037,16 @@ export default async function handler(req: any, res: any) {
     );
 
     if (!saved) {
-      return res.status(202).json({
-        success: false,
-        pending: true,
-        orderId: order.id,
-        error: "A cobrança foi criada e está em verificação. Tente novamente em instantes."
-      });
+      return pendingPayment(
+        res,
+        order.id,
+        "A cobrança foi criada e está em verificação. Tente novamente em instantes."
+      );
     }
 
-    // 16. Retornar PIX.
+    // =====================================================
+    // 15. RETORNAR PIX
+    // =====================================================
 
     return returnBravoPayment(
       res,
@@ -979,21 +1058,21 @@ export default async function handler(req: any, res: any) {
   } catch (error: any) {
     console.error(
       "CHECKOUT: Erro inesperado.",
-      error
+      error?.name || "UNKNOWN"
     );
 
-    // Nunca marcar failed em timeout ou erro inconclusivo.
+    // Não marcar pedido como failed em timeout.
     // A cobrança pode ter sido criada no gateway.
 
     if (
       error?.name === "TimeoutError" ||
       error?.name === "AbortError"
     ) {
-      return res.status(504).json({
+      return res.status(202).json({
         success: false,
         pending: true,
         orderId,
-        error: "Não foi possível confirmar a resposta do pagamento. Sua compra permanece em verificação. Tente novamente em instantes."
+        error: "Sua compra permanece em verificação. Tente recuperar o PIX em instantes."
       });
     }
 
