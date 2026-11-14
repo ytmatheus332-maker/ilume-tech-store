@@ -298,7 +298,7 @@ function returnBravoPayment(
     transactionId: String(transaction.id),
     payment: {
       method: "PIX",
-      status: transaction.status || "PENDING",
+      status: String(transaction.status || "PENDING").toUpperCase(),
       amountCents: totalCents,
       copyPaste: transaction.pix?.copy_paste || "",
       qrCode: transaction.pix?.qr_code || null,
