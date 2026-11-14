@@ -324,32 +324,38 @@ export default function Checkout() {
       // BravoPay PIX.
       if (
         data.gateway === "bravopay" &&
-        data.payment?.copyPaste &&
+        data.payment &&
         data.orderId &&
-        data.transactionId
+        data.transactionId &&
+        (
+          data.payment.copyPaste ||
+          String(data.payment.status || "").toUpperCase() === "PAID"
+        )
       ) {
         const payment: PixPayment = {
           orderId: data.orderId,
           transactionId: data.transactionId,
           status: data.payment.status || "PENDING",
           amountCents: Number(data.payment.amountCents),
-          copyPaste: data.payment.copyPaste,
+          copyPaste: data.payment.copyPaste || "",
           expiresAt: data.payment.expiresAt || null,
         };
 
         setPixPayment(payment);
 
-        try {
-          const image = await QRCode.toDataURL(payment.copyPaste, {
-            errorCorrectionLevel: "M",
-            margin: 2,
-            width: 260,
-          });
+        if (payment.copyPaste) {
+          try {
+            const image = await QRCode.toDataURL(payment.copyPaste, {
+              errorCorrectionLevel: "M",
+              margin: 2,
+              width: 260,
+            });
 
-          setQrCodeImage(image);
-        } catch (qrError) {
-          console.error("ILUME: Erro ao gerar QR Code.", qrError);
-          setQrCodeError(true);
+            setQrCodeImage(image);
+          } catch (qrError) {
+            console.error("ILUME: Erro ao gerar QR Code.", qrError);
+            setQrCodeError(true);
+          }
         }
 
         // Não remover a chave após exibir o PIX.
@@ -389,6 +395,8 @@ export default function Checkout() {
     }
   }
 
+  const isPixPaid = pixPayment?.status.toUpperCase() === "PAID";
+
   if (cart.length === 0 && !pixPayment) {
     return (
       <main className="checkout-page">
@@ -420,18 +428,31 @@ export default function Checkout() {
               ILUME TECH STORE
             </span>
 
-            <h1>Finalize seu pagamento</h1>
+            <h1>{isPixPaid ? "Pagamento aprovado" : "Finalize seu pagamento"}</h1>
 
             <p className="checkout-pix-description">
-              Seu pedido foi registrado. Escaneie o QR Code ou copie o código
-              PIX para realizar o pagamento.
+              {isPixPaid
+                ? "O pagamento deste pedido foi confirmado."
+                : "Seu pedido foi registrado. Escaneie o QR Code ou copie o código PIX para realizar o pagamento."}
             </p>
 
             <div className="checkout-pix-status">
-              <Clock3 size={18} />
+              {isPixPaid ? (
+                <CheckCircle2 size={18} />
+              ) : (
+                <Clock3 size={18} />
+              )}
               <div>
-                <strong>Pagamento aguardando confirmação</strong>
-                <p>O pedido ainda não está confirmado.</p>
+                <strong>
+                  {isPixPaid
+                    ? "Pagamento aprovado"
+                    : "Pagamento aguardando confirmação"}
+                </strong>
+                <p>
+                  {isPixPaid
+                    ? "Seu pagamento foi confirmado pela BravoPay."
+                    : "O pedido ainda não está confirmado."}
+                </p>
               </div>
             </div>
 
@@ -440,7 +461,8 @@ export default function Checkout() {
               <strong>{pixPayment.orderId}</strong>
             </div>
 
-            <div className="checkout-pix-qr">
+            {!isPixPaid && (
+              <div className="checkout-pix-qr">
               {qrCodeImage ? (
                 <img
                   src={qrCodeImage}
@@ -460,7 +482,8 @@ export default function Checkout() {
                   </span>
                 </div>
               )}
-            </div>
+              </div>
+            )}
 
             <div className="checkout-pix-amount">
               <span>VALOR DO PEDIDO</span>
@@ -469,7 +492,8 @@ export default function Checkout() {
               </strong>
             </div>
 
-            <div className="checkout-pix-copy">
+            {!isPixPaid && (
+              <div className="checkout-pix-copy">
               <label htmlFor="pix-copy-paste">
                 PIX copia e cola
               </label>
@@ -498,14 +522,17 @@ export default function Checkout() {
                   </>
                 )}
               </button>
-            </div>
+              </div>
+            )}
 
-            <div className="checkout-pix-expiration">
+            {!isPixPaid && (
+              <div className="checkout-pix-expiration">
               <Clock3 size={15} />
               <span>
                 Validade informada: {formatExpiration(pixPayment.expiresAt)}
               </span>
-            </div>
+              </div>
+            )}
 
             <p className="checkout-pix-disclaimer">
               Após pagar, aguarde a confirmação do pagamento. Não realize
