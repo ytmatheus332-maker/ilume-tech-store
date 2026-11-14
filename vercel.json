@@ -1,6 +1,11 @@
 
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/create-checkout.ts": {
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
     {
       "source": "/((?!api/|@vite/|@id/|@fs/|@react-refresh|src/|node_modules/|.*\\.).*)",

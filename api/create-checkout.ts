@@ -4,8 +4,12 @@ import { createClient } from "@supabase/supabase-js";
 const BRAVOPAY_URL = "https://bravopay.club/api/v1";
 const DEFAULT_STORE_URL = "https://ilume-tech-store.vercel.app";
 
-const REQUEST_TIMEOUT_MS = 7000;
+// A função terá até 30 segundos na configuração da Vercel.
+// Os timeouts individuais deixam margem para finalizar a resposta.
 const SUPABASE_TIMEOUT_MS = 5000;
+const BRAVO_LOOKUP_TIMEOUT_MS = 5000;
+const BRAVO_CREATE_TIMEOUT_MS = 12000;
+const MP_TIMEOUT_MS = 7000;
 
 type Gateway = "mercadopago" | "bravopay";
 
@@ -31,6 +35,30 @@ function isValidUUID(value: unknown): value is string {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
       value
     )
+  );
+}
+
+function safeCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+
+  const code = value.trim();
+
+  if (!/^[a-zA-Z0-9_.-]{1,80}$/.test(code)) {
+    return null;
+  }
+
+  return code;
+}
+
+function getErrorName(error: any): string {
+  return safeCode(error?.name) || "UNKNOWN";
+}
+
+function getErrorCode(error: any): string | null {
+  return (
+    safeCode(error?.cause?.code) ||
+    safeCode(error?.code) ||
+    null
   );
 }
 
@@ -76,6 +104,15 @@ function getProductName(products: unknown): string {
 
 async function readJson(response: Response): Promise<any> {
   return response.json().catch(() => null);
+}
+
+function getGatewayErrorCode(data: any): string | null {
+  return (
+    safeCode(data?.error?.code) ||
+    safeCode(data?.code) ||
+    safeCode(data?.error_code) ||
+    null
+  );
 }
 
 function sameItems(
@@ -302,6 +339,55 @@ export default async function handler(req: any, res: any) {
     });
   }
 
+  const requestStartedAt = Date.now();
+
+  let traceId = "unassigned";
+  let orderId: string | null = null;
+
+  function trace(event: string, details: Record<string, any> = {}) {
+    console.info(
+      "CHECKOUT_TRACE",
+      JSON.stringify({
+        event,
+        traceId,
+        orderId,
+        elapsedMs: Date.now() - requestStartedAt,
+        ...details
+      })
+    );
+  }
+
+  // Mede cada etapa sem registrar dados pessoais ou respostas completas.
+  async function runStep<T>(
+    step: string,
+    action: () => Promise<T>
+  ): Promise<T> {
+    const startedAt = Date.now();
+
+    try {
+      const result: any = await action();
+
+      trace(`${step}_completed`, {
+        durationMs: Date.now() - startedAt,
+        databaseErrorCode: safeCode(result?.error?.code)
+      });
+
+      return result;
+    } catch (error: any) {
+      trace(`${step}_failed`, {
+        durationMs: Date.now() - startedAt,
+        errorName: getErrorName(error),
+        errorCode: getErrorCode(error)
+      });
+
+      throw error;
+    }
+  }
+
+  trace("request_started", {
+    method: req.method
+  });
+
   const supabaseUrl =
     process.env.SUPABASE_URL ||
     process.env.VITE_SUPABASE_URL ||
@@ -311,6 +397,8 @@ export default async function handler(req: any, res: any) {
     process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
   if (!supabaseUrl || !supabaseServiceKey) {
+    trace("supabase_configuration_missing");
+
     console.error("CHECKOUT: Configuração do Supabase ausente.");
 
     return res.status(500).json({
@@ -318,7 +406,6 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  // Limita o tempo das requisições feitas pelo Supabase.
   const supabaseFetch: typeof fetch = async (input, init = {}) => {
     return fetch(input, {
       ...init,
@@ -340,19 +427,23 @@ export default async function handler(req: any, res: any) {
     }
   );
 
-  let orderId: string | null = null;
-
   try {
     // =====================================================
     // 1. GET: CONSULTAR GATEWAY ATIVO
     // =====================================================
 
     if (req.method === "GET") {
-      const { data, error } = await supabase
-        .from("payment_settings")
-        .select("active_gateway")
-        .eq("id", 1)
-        .single();
+      traceId = "gateway-config";
+
+      const { data, error } = await runStep(
+        "gateway_settings",
+        () =>
+          supabase
+            .from("payment_settings")
+            .select("active_gateway")
+            .eq("id", 1)
+            .single()
+      );
 
       if (error || !data) {
         console.error(
@@ -372,6 +463,10 @@ export default async function handler(req: any, res: any) {
           error: "Gateway de pagamento inválido."
         });
       }
+
+      trace("request_completed", {
+        gateway: data.active_gateway
+      });
 
       return res.status(200).json({
         success: true,
@@ -394,6 +489,10 @@ export default async function handler(req: any, res: any) {
         error: "Identificador da tentativa de checkout inválido."
       });
     }
+
+    traceId = checkoutRequestId;
+
+    trace("request_validating");
 
     if (
       !customer ||
@@ -437,11 +536,15 @@ export default async function handler(req: any, res: any) {
     const {
       data: paymentSettings,
       error: settingsError
-    } = await supabase
-      .from("payment_settings")
-      .select("active_gateway")
-      .eq("id", 1)
-      .single();
+    } = await runStep(
+      "payment_settings",
+      () =>
+        supabase
+          .from("payment_settings")
+          .select("active_gateway")
+          .eq("id", 1)
+          .single()
+    );
 
     if (settingsError || !paymentSettings) {
       console.error(
@@ -464,6 +567,47 @@ export default async function handler(req: any, res: any) {
         error: "Gateway de pagamento inválido."
       });
     }
+
+    // Validação antecipada: evita criar pedidos novos com dados inválidos.
+    if (configuredGateway === "bravopay") {
+      if (
+        customerPhone.length < 10 ||
+        customerPhone.length > 13
+      ) {
+        return res.status(400).json({
+          error: "Informe um telefone válido com DDD."
+        });
+      }
+
+      if (!isValidCPF(customerCPF)) {
+        return res.status(400).json({
+          error: "Informe um CPF válido."
+        });
+      }
+
+      if (!process.env.BRAVOPAY_API_KEY) {
+        console.error("CHECKOUT: BRAVOPAY_API_KEY ausente.");
+
+        return res.status(500).json({
+          error: "A configuração da BravoPay está incompleta."
+        });
+      }
+    }
+
+    if (
+      configuredGateway === "mercadopago" &&
+      !process.env.MP_ACCESS_TOKEN
+    ) {
+      console.error("CHECKOUT: MP_ACCESS_TOKEN ausente.");
+
+      return res.status(500).json({
+        error: "A configuração do Mercado Pago está incompleta."
+      });
+    }
+
+    trace("gateway_selected", {
+      gateway: configuredGateway
+    });
 
     // =====================================================
     // 4. CONSOLIDAR QUANTIDADES
@@ -500,7 +644,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // =====================================================
-    // 5. CONSULTAR TODAS AS VARIANTES EM UMA ÚNICA CHAMADA
+    // 5. CONSULTAR VARIANTES
     // =====================================================
 
     const variantIds = Array.from(quantities.keys());
@@ -508,18 +652,22 @@ export default async function handler(req: any, res: any) {
     const {
       data: variants,
       error: variantsError
-    } = await supabase
-      .from("product_variants")
-      .select(`
-        id,
-        price_cents,
-        products(name),
-        color,
-        storage_gb,
-        availability_status,
-        is_active
-      `)
-      .in("id", variantIds);
+    } = await runStep(
+      "product_variants",
+      () =>
+        supabase
+          .from("product_variants")
+          .select(`
+            id,
+            price_cents,
+            products(name),
+            color,
+            storage_gb,
+            availability_status,
+            is_active
+          `)
+          .in("id", variantIds)
+    );
 
     if (variantsError || !variants) {
       console.error(
@@ -603,6 +751,11 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    trace("products_validated", {
+      itemCount: validatedItems.length,
+      totalCents
+    });
+
     // =====================================================
     // 6. CRIAR OU RECUPERAR PEDIDO
     // =====================================================
@@ -613,32 +766,42 @@ export default async function handler(req: any, res: any) {
     const {
       data: insertedOrder,
       error: orderInsertError
-    } = await supabase
-      .from("orders")
-      .insert([{
-        checkout_request_id: checkoutRequestId,
-        customer_name: customerName,
-        customer_email: customerEmail,
-        customer_phone: customerPhone || null,
-        total_amount_cents: totalCents,
-        status: "pending",
-        gateway: configuredGateway
-      }])
-      .select()
-      .single();
+    } = await runStep(
+      "order_insert",
+      () =>
+        supabase
+          .from("orders")
+          .insert([{
+            checkout_request_id: checkoutRequestId,
+            customer_name: customerName,
+            customer_email: customerEmail,
+            customer_phone: customerPhone || null,
+            total_amount_cents: totalCents,
+            status: "pending",
+            gateway: configuredGateway
+          }])
+          .select()
+          .single()
+    );
 
     if (!orderInsertError && insertedOrder) {
       order = insertedOrder;
       newlyCreated = true;
+
+      trace("order_created");
     } else if (orderInsertError?.code === "23505") {
       const {
         data: existingOrder,
         error: existingOrderError
-      } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("checkout_request_id", checkoutRequestId)
-        .maybeSingle();
+      } = await runStep(
+        "order_recovery",
+        () =>
+          supabase
+            .from("orders")
+            .select("*")
+            .eq("checkout_request_id", checkoutRequestId)
+            .maybeSingle()
+      );
 
       if (existingOrderError || !existingOrder) {
         console.error(
@@ -652,6 +815,8 @@ export default async function handler(req: any, res: any) {
       }
 
       order = existingOrder;
+
+      trace("order_recovered");
     } else {
       console.error(
         "CHECKOUT: Erro ao registrar pedido.",
@@ -678,6 +843,8 @@ export default async function handler(req: any, res: any) {
       Number(order.total_amount_cents) !== totalCents ||
       (order.customer_phone || "") !== (customerPhone || "")
     ) {
+      trace("order_validation_failed");
+
       return res.status(409).json({
         error: "Esta tentativa já está vinculada a outro pedido. Inicie uma nova compra."
       });
@@ -693,27 +860,8 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // =====================================================
-    // 8. REGISTRAR ITENS DO PEDIDO
-    // =====================================================
-
-    const itemsReady = await ensureOrderItems(
-      supabase,
-      order.id,
-      validatedItems,
-      newlyCreated
-    );
-
-    if (!itemsReady) {
-      return res.status(500).json({
-        error: "Não foi possível confirmar os produtos do pedido."
-      });
-    }
-
-    // =====================================================
-    // 9. VALIDAR CREDENCIAIS DO GATEWAY
-    // =====================================================
-
+    // Se o gateway foi alterado no painel enquanto existia uma
+    // tentativa pendente, respeitamos o gateway salvo no pedido.
     if (orderGateway === "bravopay") {
       if (
         customerPhone.length < 10 ||
@@ -731,8 +879,6 @@ export default async function handler(req: any, res: any) {
       }
 
       if (!process.env.BRAVOPAY_API_KEY) {
-        console.error("CHECKOUT: BRAVOPAY_API_KEY ausente.");
-
         return res.status(500).json({
           error: "A configuração da BravoPay está incompleta."
         });
@@ -743,34 +889,59 @@ export default async function handler(req: any, res: any) {
       orderGateway === "mercadopago" &&
       !process.env.MP_ACCESS_TOKEN
     ) {
-      console.error("CHECKOUT: MP_ACCESS_TOKEN ausente.");
-
       return res.status(500).json({
         error: "A configuração do Mercado Pago está incompleta."
       });
     }
+
+    // =====================================================
+    // 8. REGISTRAR ITENS DO PEDIDO
+    // =====================================================
+
+    const itemsReady = await runStep(
+      "order_items",
+      () =>
+        ensureOrderItems(
+          supabase,
+          order.id,
+          validatedItems,
+          newlyCreated
+        )
+    );
+
+    if (!itemsReady) {
+      return res.status(500).json({
+        error: "Não foi possível confirmar os produtos do pedido."
+      });
+    }
+
+    trace("order_items_ready");
 
     const storeUrl = (
       process.env.STORE_URL || DEFAULT_STORE_URL
     ).replace(/\/$/, "");
 
     // =====================================================
-    // 10. MERCADO PAGO
+    // 9. MERCADO PAGO
     // =====================================================
 
     if (orderGateway === "mercadopago") {
       if (order.preference_id) {
-        const preferenceResponse = await fetch(
-          `https://api.mercadopago.com/checkout/preferences/${encodeURIComponent(
-            order.preference_id
-          )}`,
-          {
-            method: "GET",
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-            headers: {
-              Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`
-            }
-          }
+        const preferenceResponse = await runStep(
+          "mp_preference_lookup",
+          () =>
+            fetch(
+              `https://api.mercadopago.com/checkout/preferences/${encodeURIComponent(
+                order.preference_id
+              )}`,
+              {
+                method: "GET",
+                signal: AbortSignal.timeout(MP_TIMEOUT_MS),
+                headers: {
+                  Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`
+                }
+              }
+            )
         );
 
         const preferenceData = await readJson(
@@ -781,6 +952,11 @@ export default async function handler(req: any, res: any) {
           preferenceResponse.ok &&
           preferenceData?.init_point
         ) {
+          trace("request_completed", {
+            gateway: "mercadopago",
+            recovered: true
+          });
+
           return res.status(200).json({
             success: true,
             gateway: "mercadopago",
@@ -801,30 +977,34 @@ export default async function handler(req: any, res: any) {
         );
       }
 
-      const mpResponse = await fetch(
-        "https://api.mercadopago.com/checkout/preferences",
-        {
-          method: "POST",
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`
-          },
-          body: JSON.stringify({
-            items: validatedItems.map((item) => ({
-              title: item.title,
-              quantity: item.quantity,
-              unit_price: item.priceCents / 100,
-              currency_id: "BRL"
-            })),
-            external_reference: order.id,
-            back_urls: {
-              success: `${storeUrl}/checkout/sucesso`,
-              failure: `${storeUrl}/checkout/falha`
-            },
-            auto_return: "approved"
-          })
-        }
+      const mpResponse = await runStep(
+        "mp_preference_create",
+        () =>
+          fetch(
+            "https://api.mercadopago.com/checkout/preferences",
+            {
+              method: "POST",
+              signal: AbortSignal.timeout(MP_TIMEOUT_MS),
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`
+              },
+              body: JSON.stringify({
+                items: validatedItems.map((item) => ({
+                  title: item.title,
+                  quantity: item.quantity,
+                  unit_price: item.priceCents / 100,
+                  currency_id: "BRL"
+                })),
+                external_reference: order.id,
+                back_urls: {
+                  success: `${storeUrl}/checkout/sucesso`,
+                  failure: `${storeUrl}/checkout/falha`
+                },
+                auto_return: "approved"
+              })
+            }
+          )
       );
 
       const mpData = await readJson(mpResponse);
@@ -836,7 +1016,9 @@ export default async function handler(req: any, res: any) {
       ) {
         console.error(
           "CHECKOUT: Resposta Mercado Pago inválida.",
-          mpResponse.status
+          {
+            httpStatus: mpResponse.status
+          }
         );
 
         if (
@@ -854,12 +1036,16 @@ export default async function handler(req: any, res: any) {
         );
       }
 
-      const { error: preferenceError } = await supabase
-        .from("orders")
-        .update({
-          preference_id: String(mpData.id)
-        })
-        .eq("id", order.id);
+      const { error: preferenceError } = await runStep(
+        "mp_preference_save",
+        () =>
+          supabase
+            .from("orders")
+            .update({
+              preference_id: String(mpData.id)
+            })
+            .eq("id", order.id)
+      );
 
       if (preferenceError) {
         console.error(
@@ -874,6 +1060,11 @@ export default async function handler(req: any, res: any) {
         );
       }
 
+      trace("request_completed", {
+        gateway: "mercadopago",
+        recovered: false
+      });
+
       return res.status(200).json({
         success: true,
         gateway: "mercadopago",
@@ -883,7 +1074,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // =====================================================
-    // 11. BRAVOPAY — CONFIGURAÇÃO
+    // 10. BRAVOPAY — CONFIGURAÇÃO
     // =====================================================
 
     const bravoHeaders = {
@@ -893,19 +1084,29 @@ export default async function handler(req: any, res: any) {
 
     let existingTransaction: any = null;
 
-    // Pedidos recuperados consultam primeiro a transação anterior.
-    // Pedidos novos seguem diretamente para a criação do PIX.
+    // =====================================================
+    // 11. RECUPERAR TRANSAÇÃO EXISTENTE
+    // =====================================================
+
     if (!newlyCreated) {
+      trace("bravo_lookup_started");
+
       try {
-        const lookupResponse = await fetch(
-          `${BRAVOPAY_URL}/transactions?external_reference=${encodeURIComponent(
-            order.id
-          )}`,
-          {
-            method: "GET",
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-            headers: bravoHeaders
-          }
+        const lookupResponse = await runStep(
+          "bravo_lookup",
+          () =>
+            fetch(
+              `${BRAVOPAY_URL}/transactions?external_reference=${encodeURIComponent(
+                order.id
+              )}`,
+              {
+                method: "GET",
+                signal: AbortSignal.timeout(
+                  BRAVO_LOOKUP_TIMEOUT_MS
+                ),
+                headers: bravoHeaders
+              }
+            )
         );
 
         if (lookupResponse.ok) {
@@ -916,29 +1117,42 @@ export default async function handler(req: any, res: any) {
             order.id,
             totalCents
           );
+
+          trace("bravo_lookup_result", {
+            httpStatus: lookupResponse.status,
+            transactionFound: Boolean(existingTransaction)
+          });
         } else {
-          console.error(
-            "CHECKOUT: Consulta de recuperação BravoPay falhou.",
-            lookupResponse.status
-          );
+          trace("bravo_lookup_http_error", {
+            httpStatus: lookupResponse.status
+          });
         }
       } catch (lookupError: any) {
+        trace("bravo_lookup_failed", {
+          errorName: getErrorName(lookupError),
+          errorCode: getErrorCode(lookupError)
+        });
+
         console.error(
           "CHECKOUT: Consulta BravoPay inconclusiva.",
-          lookupError?.name || "UNKNOWN"
+          getErrorName(lookupError)
         );
       }
     }
 
     // =====================================================
-    // 12. RECUPERAR PIX EXISTENTE
+    // 12. RETORNAR PIX RECUPERADO
     // =====================================================
 
     if (existingTransaction) {
-      const saved = await saveBravoTransaction(
-        supabase,
-        order.id,
-        existingTransaction
+      const saved = await runStep(
+        "bravo_transaction_recovery_save",
+        () =>
+          saveBravoTransaction(
+            supabase,
+            order.id,
+            existingTransaction
+          )
       );
 
       if (!saved) {
@@ -948,6 +1162,11 @@ export default async function handler(req: any, res: any) {
           "Encontramos sua cobrança, mas estamos sincronizando o pagamento."
         );
       }
+
+      trace("request_completed", {
+        gateway: "bravopay",
+        recovered: true
+      });
 
       return returnBravoPayment(
         res,
@@ -961,35 +1180,52 @@ export default async function handler(req: any, res: any) {
     // 13. CRIAR PIX NA BRAVOPAY
     // =====================================================
 
+    trace("bravo_create_started", {
+      timeoutMs: BRAVO_CREATE_TIMEOUT_MS
+    });
+
     let bravoResponse: Response;
 
     try {
-      bravoResponse = await fetch(
-        `${BRAVOPAY_URL}/transactions`,
-        {
-          method: "POST",
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-          headers: {
-            ...bravoHeaders,
-            "Idempotency-Key": checkoutRequestId
-          },
-          body: JSON.stringify({
-            amount_cents: totalCents,
-            method: "pix",
-            customer: {
-              name: customerName,
-              email: customerEmail,
-              phone: customerPhone,
-              cpf: customerCPF
-            },
-            external_reference: order.id
-          })
-        }
+      bravoResponse = await runStep(
+        "bravo_create",
+        () =>
+          fetch(
+            `${BRAVOPAY_URL}/transactions`,
+            {
+              method: "POST",
+              signal: AbortSignal.timeout(
+                BRAVO_CREATE_TIMEOUT_MS
+              ),
+              headers: {
+                ...bravoHeaders,
+                "Idempotency-Key": checkoutRequestId
+              },
+              body: JSON.stringify({
+                amount_cents: totalCents,
+                method: "pix",
+                customer: {
+                  name: customerName,
+                  email: customerEmail,
+                  phone: customerPhone,
+                  cpf: customerCPF
+                },
+                external_reference: order.id
+              })
+            }
+          )
       );
     } catch (bravoError: any) {
+      trace("bravo_create_failed", {
+        errorName: getErrorName(bravoError),
+        errorCode: getErrorCode(bravoError),
+        timeoutMs: BRAVO_CREATE_TIMEOUT_MS
+      });
+
       console.error(
         "CHECKOUT: Comunicação com BravoPay inconclusiva.",
-        bravoError?.name || "UNKNOWN"
+        getErrorName(bravoError),
+        getErrorCode(bravoError) || ""
       );
 
       return pendingPayment(
@@ -999,8 +1235,15 @@ export default async function handler(req: any, res: any) {
       );
     }
 
+    trace("bravo_create_http_response", {
+      httpStatus: bravoResponse.status
+    });
+
     const bravoData = await readJson(bravoResponse);
-    const returnedAmount = Number(bravoData?.amount_cents);
+
+    const returnedAmount = Number(
+      bravoData?.amount_cents
+    );
 
     const validBravoResponse =
       bravoResponse.ok &&
@@ -1011,11 +1254,18 @@ export default async function handler(req: any, res: any) {
       returnedAmount === totalCents;
 
     if (!validBravoResponse) {
+      const responseCode = getGatewayErrorCode(bravoData);
+
+      trace("bravo_create_invalid_response", {
+        httpStatus: bravoResponse.status,
+        responseCode
+      });
+
       console.error(
         "CHECKOUT: Resposta BravoPay não confirmada.",
         {
           httpStatus: bravoResponse.status,
-          responseCode: bravoData?.code || null
+          responseCode
         }
       );
 
@@ -1030,10 +1280,14 @@ export default async function handler(req: any, res: any) {
     // 14. SALVAR ID DA TRANSAÇÃO
     // =====================================================
 
-    const saved = await saveBravoTransaction(
-      supabase,
-      order.id,
-      bravoData
+    const saved = await runStep(
+      "bravo_transaction_save",
+      () =>
+        saveBravoTransaction(
+          supabase,
+          order.id,
+          bravoData
+        )
     );
 
     if (!saved) {
@@ -1048,6 +1302,12 @@ export default async function handler(req: any, res: any) {
     // 15. RETORNAR PIX
     // =====================================================
 
+    trace("request_completed", {
+      gateway: "bravopay",
+      recovered: false,
+      httpStatus: bravoResponse.status
+    });
+
     return returnBravoPayment(
       res,
       order.id,
@@ -1056,12 +1316,18 @@ export default async function handler(req: any, res: any) {
     );
 
   } catch (error: any) {
+    trace("request_failed", {
+      errorName: getErrorName(error),
+      errorCode: getErrorCode(error)
+    });
+
     console.error(
       "CHECKOUT: Erro inesperado.",
-      error?.name || "UNKNOWN"
+      getErrorName(error),
+      getErrorCode(error) || ""
     );
 
-    // Não marcar pedido como failed em timeout.
+    // Nunca marcar como failed em timeout ou erro de comunicação.
     // A cobrança pode ter sido criada no gateway.
 
     if (
