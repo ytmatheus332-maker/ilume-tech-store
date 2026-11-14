@@ -19,20 +19,6 @@ import "./Checkout.css";
 
 type Gateway = "mercadopago" | "bravopay";
 
-interface PixPayment {
-  orderId: string;
-  transactionId: string;
-  status: string;
-  amountCents: number;
-  copyPaste: string;
-  expiresAt: string | null;
-}
-
-interface CheckoutIdentity {
-  fingerprint: string;
-  id: string;
-}
-
 interface CheckoutCustomer {
   name: string;
   email: string;
@@ -40,9 +26,18 @@ interface CheckoutCustomer {
   cpf: string;
 }
 
+interface PixPayment {
+  orderId: string;
+  transactionId: string | null;
+  status: string;
+  amountCents: number;
+  copyPaste: string;
+  expiresAt: string | null;
+}
+
 const CHECKOUT_REQUEST_KEY = "ilume_checkout_request_id";
 
-let memoryCheckoutIdentity: CheckoutIdentity | null = null;
+let memoryCheckoutRequestId: string | null = null;
 
 function createCheckoutRequestId(): string {
   return crypto.randomUUID();
@@ -55,82 +50,105 @@ function isValidUUID(value: unknown): value is string {
   );
 }
 
-function normalizeDigits(value: string): string {
-  return value.replace(/\D/g, "");
-}
+function readCheckoutRequestId(
+  storage: Storage,
+  allowLegacyJson: boolean
+): string | null {
+  const savedValue = storage.getItem(CHECKOUT_REQUEST_KEY);
 
-function createCheckoutFingerprint(
-  cart: any[],
-  customer: CheckoutCustomer
-): string {
-  const normalizedItems = cart
-    .map((item) => ({
-      variantId: String(item.variantId || item.id || ""),
-      quantity: Number(item.quantity || 1)
-    }))
-    .sort((a, b) => a.variantId.localeCompare(b.variantId));
+  if (isValidUUID(savedValue)) {
+    return savedValue;
+  }
 
-  return JSON.stringify({
-    items: normalizedItems,
-    customer: {
-      name: customer.name.trim(),
-      email: customer.email.trim().toLowerCase(),
-      phone: normalizeDigits(customer.phone),
-      cpf: normalizeDigits(customer.cpf)
-    }
-  });
-}
+  if (!allowLegacyJson || !savedValue) {
+    return null;
+  }
 
-function getCheckoutRequestId(fingerprint: string): string {
   try {
-    const savedValue = sessionStorage.getItem(CHECKOUT_REQUEST_KEY);
+    const legacyIdentity = JSON.parse(savedValue) as { id?: unknown };
+    return isValidUUID(legacyIdentity.id) ? legacyIdentity.id : null;
+  } catch {
+    return null;
+  }
+}
 
-    if (savedValue) {
-      const saved = JSON.parse(savedValue) as CheckoutIdentity;
+function getCheckoutRequestId(): string {
+  if (isValidUUID(memoryCheckoutRequestId)) {
+    return memoryCheckoutRequestId;
+  }
 
-      if (
-        saved.fingerprint === fingerprint &&
-        isValidUUID(saved.id)
-      ) {
-        memoryCheckoutIdentity = saved;
-        return saved.id;
+  let savedId: string | null = null;
+
+  try {
+    savedId = readCheckoutRequestId(localStorage, false);
+  } catch {
+    // Tenta recuperar o identificador da sessão abaixo.
+  }
+
+  if (!savedId) {
+    try {
+      savedId = readCheckoutRequestId(sessionStorage, true);
+    } catch {
+      // Um novo identificador ficará em memória nesta sessão.
+    }
+  }
+
+  if (savedId) {
+    memoryCheckoutRequestId = savedId;
+
+    try {
+      localStorage.setItem(CHECKOUT_REQUEST_KEY, savedId);
+      sessionStorage.removeItem(CHECKOUT_REQUEST_KEY);
+    } catch {
+      try {
+        sessionStorage.setItem(CHECKOUT_REQUEST_KEY, savedId);
+      } catch {
+        // A memória mantém a identidade até o fim desta sessão.
       }
     }
 
-    const identity: CheckoutIdentity = {
-      fingerprint,
-      id: createCheckoutRequestId()
-    };
+    return savedId;
+  }
 
-    sessionStorage.setItem(
-      CHECKOUT_REQUEST_KEY,
-      JSON.stringify(identity)
-    );
+  const newId = createCheckoutRequestId();
+  memoryCheckoutRequestId = newId;
 
-    memoryCheckoutIdentity = identity;
-
-    return identity.id;
+  try {
+    localStorage.setItem(CHECKOUT_REQUEST_KEY, newId);
   } catch {
-    if (
-      memoryCheckoutIdentity?.fingerprint === fingerprint &&
-      isValidUUID(memoryCheckoutIdentity.id)
-    ) {
-      return memoryCheckoutIdentity.id;
+    try {
+      sessionStorage.setItem(CHECKOUT_REQUEST_KEY, newId);
+    } catch {
+      // A memória mantém a identidade até o fim desta sessão.
     }
+  }
 
-    const identity: CheckoutIdentity = {
-      fingerprint,
-      id: createCheckoutRequestId()
-    };
+  return newId;
+}
 
-    memoryCheckoutIdentity = identity;
+function getStoredCheckoutRequestId(): string | null {
+  try {
+    const localId = readCheckoutRequestId(localStorage, false);
+    if (localId) return localId;
+  } catch {
+    // Tenta a chave da sessão abaixo.
+  }
 
-    return identity.id;
+  try {
+    return readCheckoutRequestId(sessionStorage, true);
+  } catch {
+    return null;
   }
 }
 
 function clearCheckoutRequestId(): void {
-  memoryCheckoutIdentity = null;
+  memoryCheckoutRequestId = null;
+
+  try {
+    localStorage.removeItem(CHECKOUT_REQUEST_KEY);
+  } catch {
+    // A chave de sessão poderá ser removida separadamente.
+  }
 
   try {
     sessionStorage.removeItem(CHECKOUT_REQUEST_KEY);
@@ -176,6 +194,8 @@ export default function Checkout() {
   const [qrCodeImage, setQrCodeImage] = useState("");
   const [qrCodeError, setQrCodeError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [recoveryRequestId, setRecoveryRequestId] = useState<string | null>(null);
+  const [recoveryPending, setRecoveryPending] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -190,7 +210,7 @@ export default function Checkout() {
           cache: "no-store",
         });
 
-        const data = await response.json();
+        const data = await response.json().catch(() => null);
 
         if (!response.ok || !data.success) {
           throw new Error(
@@ -230,6 +250,109 @@ export default function Checkout() {
     };
   }, []);
 
+  useEffect(() => {
+    const savedRequestId = getStoredCheckoutRequestId();
+    if (savedRequestId) setRecoveryRequestId(savedRequestId);
+  }, []);
+
+  useEffect(() => {
+    const currentPixStatus = String(pixPayment?.status || "").toUpperCase();
+    const isCurrentPaymentPending =
+      !pixPayment || currentPixStatus === "PENDING";
+
+    if (!recoveryRequestId || !isCurrentPaymentPending) return;
+
+    const requestId = recoveryRequestId;
+    let active = true;
+    let timer: number | null = null;
+    let pollCount = 0;
+    const intervals = [2000, 4000, 8000, 15000];
+
+    function scheduleNextPoll() {
+      if (!active) return;
+      const delay = intervals[Math.min(pollCount, intervals.length - 1)];
+      pollCount += 1;
+      timer = window.setTimeout(pollPaymentStatus, delay);
+    }
+
+    setRecoveryPending(true);
+
+    async function pollPaymentStatus() {
+      try {
+        const response = await fetch("/api/create-checkout", {
+          method: "GET",
+          cache: "no-store",
+          headers: { "X-Checkout-Request-Id": requestId }
+        });
+        const data = await response.json().catch(() => null);
+
+        if (!active) return;
+
+        if (data?.state === "not_found") {
+          setRecoveryPending(false);
+          setRecoveryRequestId(null);
+          return;
+        }
+
+        const payment = data?.payment;
+        const status = String(payment?.status || "").toUpperCase();
+        const terminalStatus = [
+          "PAID", "EXPIRED", "FAILED", "REFUNDED", "CHARGEBACK"
+        ].includes(status);
+
+        if (
+          data?.success === true &&
+          data.orderId &&
+          (data.state === "available" || data.state === "paid" || data.state === "terminal") &&
+          payment &&
+          (data.transactionId || terminalStatus) &&
+          (Boolean(payment.copyPaste) || terminalStatus)
+        ) {
+          const recoveredPayment: PixPayment = {
+            orderId: data.orderId,
+            transactionId: data.transactionId,
+            status,
+            amountCents: Number(payment.amountCents),
+            copyPaste: payment.copyPaste || "",
+            expiresAt: payment.expiresAt || null
+          };
+
+          setPixPayment(recoveredPayment);
+          setRecoveryPending(false);
+          if (terminalStatus) setRecoveryRequestId(null);
+          setError(null);
+
+          if (recoveredPayment.copyPaste) {
+            try {
+              const image = await QRCode.toDataURL(recoveredPayment.copyPaste, {
+                errorCorrectionLevel: "M",
+                margin: 2,
+                width: 260
+              });
+              if (active) setQrCodeImage(image);
+            } catch (qrError) {
+              console.error("ILUME: Erro ao gerar QR Code.", qrError);
+              if (active) setQrCodeError(true);
+            }
+          }
+          if (!terminalStatus) scheduleNextPoll();
+          return;
+        }
+      } catch {
+        // Falha temporária de consulta: mantém a identidade e tenta novamente.
+      }
+
+      scheduleNextPoll();
+    }
+
+    pollPaymentStatus();
+
+    return () => {
+      active = false;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [recoveryRequestId, pixPayment?.status]);
+
   async function handleFinishCheckout(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -261,6 +384,8 @@ export default function Checkout() {
       return;
     }
 
+    let submittedCheckoutRequestId: string | null = null;
+
     try {
       setLoading(true);
       setError(null);
@@ -272,12 +397,8 @@ export default function Checkout() {
         cpf
       };
 
-      const fingerprint = createCheckoutFingerprint(
-        cart,
-        customer
-      );
-
-      const checkoutRequestId = getCheckoutRequestId(fingerprint);
+      const checkoutRequestId = getCheckoutRequestId();
+      submittedCheckoutRequestId = checkoutRequestId;
 
       const itemsPayload = cart.map((item) => ({
         variantId: item.variantId || item.id,
@@ -296,14 +417,24 @@ export default function Checkout() {
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
 
       // Resposta inconclusiva: preservar a chave para retry.
-      if (!response.ok || !data.success) {
-        throw new Error(
-          data.error ||
-            "Não foi possível confirmar o resultado do pagamento. Tente novamente."
+      if (!response.ok || !data?.success) {
+        if (data?.terminal === true) {
+          clearCheckoutRequestId();
+          setRecoveryRequestId(null);
+          setRecoveryPending(false);
+        } else {
+          setRecoveryRequestId(checkoutRequestId);
+          setRecoveryPending(true);
+        }
+
+        setError(
+          data?.error ||
+            "Não foi possível confirmar o pagamento. Sua tentativa foi preservada; tente recuperar este mesmo pedido em instantes."
         );
+        return;
       }
 
       // Mercado Pago.
@@ -316,6 +447,8 @@ export default function Checkout() {
 
         clearCheckoutRequestId();
         clearCart();
+        setRecoveryRequestId(null);
+        setRecoveryPending(false);
 
         window.location.href = data.paymentUrl;
         return;
@@ -324,32 +457,44 @@ export default function Checkout() {
       // BravoPay PIX.
       if (
         data.gateway === "bravopay" &&
-        data.payment?.copyPaste &&
+        data.payment &&
         data.orderId &&
-        data.transactionId
+        data.transactionId &&
+        (
+          data.payment.copyPaste ||
+          ["PAID", "EXPIRED", "FAILED", "REFUNDED", "CHARGEBACK"].includes(
+            String(data.payment.status || "").toUpperCase()
+          )
+        )
       ) {
         const payment: PixPayment = {
           orderId: data.orderId,
           transactionId: data.transactionId,
-          status: data.payment.status || "PENDING",
+          status: String(data.payment.status || "PENDING").toUpperCase(),
           amountCents: Number(data.payment.amountCents),
-          copyPaste: data.payment.copyPaste,
+          copyPaste: data.payment.copyPaste || "",
           expiresAt: data.payment.expiresAt || null,
         };
 
         setPixPayment(payment);
+        setRecoveryRequestId(
+          payment.status === "PENDING" ? checkoutRequestId : null
+        );
+        setRecoveryPending(false);
 
-        try {
-          const image = await QRCode.toDataURL(payment.copyPaste, {
-            errorCorrectionLevel: "M",
-            margin: 2,
-            width: 260,
-          });
+        if (payment.copyPaste) {
+          try {
+            const image = await QRCode.toDataURL(payment.copyPaste, {
+              errorCorrectionLevel: "M",
+              margin: 2,
+              width: 260,
+            });
 
-          setQrCodeImage(image);
-        } catch (qrError) {
-          console.error("ILUME: Erro ao gerar QR Code.", qrError);
-          setQrCodeError(true);
+            setQrCodeImage(image);
+          } catch (qrError) {
+            console.error("ILUME: Erro ao gerar QR Code.", qrError);
+            setQrCodeError(true);
+          }
         }
 
         // Não remover a chave após exibir o PIX.
@@ -362,6 +507,10 @@ export default function Checkout() {
         "A resposta do gateway possui um formato inesperado."
       );
     } catch (err) {
+      if (submittedCheckoutRequestId) {
+        setRecoveryRequestId(submittedCheckoutRequestId);
+        setRecoveryPending(true);
+      }
       setError(
         err instanceof Error
           ? err.message
@@ -388,6 +537,39 @@ export default function Checkout() {
       );
     }
   }
+
+  const pixStatus = String(pixPayment?.status || "PENDING").toUpperCase();
+  const isPixPaid = pixStatus === "PAID";
+  const isPixTerminal = ["EXPIRED", "FAILED", "REFUNDED", "CHARGEBACK"].includes(
+    pixStatus
+  );
+  const canPayWithPix = !isPixPaid && !isPixTerminal;
+
+  const pixStatusLabel =
+    pixStatus === "EXPIRED"
+      ? "PIX expirado"
+      : pixStatus === "FAILED"
+        ? "Pagamento não concluído"
+        : pixStatus === "REFUNDED"
+          ? "Pagamento estornado"
+          : pixStatus === "CHARGEBACK"
+            ? "Pagamento contestado"
+            : isPixPaid
+              ? "Pagamento aprovado"
+              : "Pagamento aguardando confirmação";
+
+  const pixStatusMessage =
+    pixStatus === "EXPIRED"
+      ? "Esta cobrança expirou. Não tente pagar este código PIX."
+      : pixStatus === "FAILED"
+        ? "Esta cobrança não foi concluída. Não tente pagá-la novamente."
+        : pixStatus === "REFUNDED"
+          ? "Este pagamento foi estornado."
+          : pixStatus === "CHARGEBACK"
+            ? "Este pagamento está contestado."
+            : isPixPaid
+              ? "Seu pagamento foi confirmado pela BravoPay."
+              : "O pedido ainda não está confirmado.";
 
   if (cart.length === 0 && !pixPayment) {
     return (
@@ -420,18 +602,33 @@ export default function Checkout() {
               ILUME TECH STORE
             </span>
 
-            <h1>Finalize seu pagamento</h1>
+            <h1>
+              {isPixPaid
+                ? "Pagamento aprovado"
+                : isPixTerminal
+                  ? "Pagamento indisponível"
+                  : "Finalize seu pagamento"}
+            </h1>
 
             <p className="checkout-pix-description">
-              Seu pedido foi registrado. Escaneie o QR Code ou copie o código
-              PIX para realizar o pagamento.
+              {isPixPaid
+                ? "O pagamento deste pedido foi confirmado."
+                : isPixTerminal
+                  ? pixStatusMessage
+                  : "Seu pedido foi registrado. Escaneie o QR Code ou copie o código PIX para realizar o pagamento."}
             </p>
 
             <div className="checkout-pix-status">
-              <Clock3 size={18} />
+              {isPixPaid ? (
+                <CheckCircle2 size={18} />
+              ) : isPixTerminal ? (
+                <AlertCircle size={18} />
+              ) : (
+                <Clock3 size={18} />
+              )}
               <div>
-                <strong>Pagamento aguardando confirmação</strong>
-                <p>O pedido ainda não está confirmado.</p>
+                <strong>{pixStatusLabel}</strong>
+                <p>{pixStatusMessage}</p>
               </div>
             </div>
 
@@ -440,7 +637,8 @@ export default function Checkout() {
               <strong>{pixPayment.orderId}</strong>
             </div>
 
-            <div className="checkout-pix-qr">
+            {canPayWithPix && (
+              <div className="checkout-pix-qr">
               {qrCodeImage ? (
                 <img
                   src={qrCodeImage}
@@ -460,7 +658,8 @@ export default function Checkout() {
                   </span>
                 </div>
               )}
-            </div>
+              </div>
+            )}
 
             <div className="checkout-pix-amount">
               <span>VALOR DO PEDIDO</span>
@@ -469,7 +668,8 @@ export default function Checkout() {
               </strong>
             </div>
 
-            <div className="checkout-pix-copy">
+            {canPayWithPix && (
+              <div className="checkout-pix-copy">
               <label htmlFor="pix-copy-paste">
                 PIX copia e cola
               </label>
@@ -498,21 +698,39 @@ export default function Checkout() {
                   </>
                 )}
               </button>
-            </div>
+              </div>
+            )}
 
-            <div className="checkout-pix-expiration">
+            {canPayWithPix && (
+              <div className="checkout-pix-expiration">
               <Clock3 size={15} />
               <span>
                 Validade informada: {formatExpiration(pixPayment.expiresAt)}
               </span>
-            </div>
+              </div>
+            )}
 
             <p className="checkout-pix-disclaimer">
-              Após pagar, aguarde a confirmação do pagamento. Não realize
-              outro pagamento para este pedido.
+              {isPixPaid
+                ? "Pagamento confirmado. Não realize outro pagamento para este pedido."
+                : isPixTerminal
+                  ? "Não realize outro pagamento usando esta cobrança."
+                  : "Após pagar, aguarde a confirmação do pagamento. Não realize outro pagamento para este pedido."}
             </p>
 
-            <Link to="/" className="checkout-confirmation-button">
+            <Link
+              to="/"
+              className="checkout-confirmation-button"
+              onClick={() => {
+                if (isPixPaid || isPixTerminal) {
+                  clearCheckoutRequestId();
+
+                  if (isPixPaid) {
+                    clearCart();
+                  }
+                }
+              }}
+            >
               Voltar para a loja
             </Link>
           </section>
@@ -530,6 +748,15 @@ export default function Checkout() {
               <div className="checkout-alert" role="alert">
                 <AlertCircle size={18} />
                 <span>{error}</span>
+              </div>
+            )}
+
+            {recoveryPending && (
+              <div className="checkout-alert" role="status">
+                <Clock3 size={18} />
+                <span>
+                  Estamos consultando a mesma cobrança na BravoPay. Esta tela pode permanecer aberta; não será criada outra cobrança durante a consulta.
+                </span>
               </div>
             )}
 
@@ -741,3 +968,4 @@ export default function Checkout() {
     </main>
   );
 }
+
