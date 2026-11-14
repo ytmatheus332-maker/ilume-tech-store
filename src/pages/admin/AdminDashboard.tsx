@@ -32,6 +32,7 @@ import {
   ExternalLink,
   Pencil,
   FilePlus2,
+  CreditCard,
 } from "lucide-react";
 
 type CampaignType = "promotion" | "black_friday" | null;
@@ -167,6 +168,14 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  const [activeView, setActiveView] = useState<
+    "visao-geral" | "catalogo" | "produto" | "gateway"
+  >("visao-geral");
+
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [activeView]);
 
   const publishedCount = useMemo(
     () => products.filter((product) => product.status === "published").length,
@@ -464,6 +473,7 @@ export default function AdminDashboard() {
 
   async function handleOpenVariants(product: ProductSummary) {
     setSelectedProduct(product);
+    setActiveView("produto");
     setColor("");
     setStorage("128");
     setPriceReais("");
@@ -851,6 +861,7 @@ export default function AdminDashboard() {
     setSelectedProduct(null);
     setVariants([]);
     setImages([]);
+    setActiveView("catalogo");
   }
 
   return (
@@ -867,20 +878,42 @@ export default function AdminDashboard() {
         <div className="sidebar-label">WORKSPACE</div>
 
         <nav className="sidebar-navigation">
-          <a href="#dashboard" className="sidebar-link active">
+          <button
+            type="button"
+            className={`sidebar-link ${activeView === "visao-geral" ? "active" : ""}`}
+            onClick={() => setActiveView("visao-geral")}
+          >
             <LayoutDashboard size={18} />
             <span>Visão geral</span>
-          </a>
+          </button>
 
-          <a href="#catalogo" className="sidebar-link">
+          <button
+            type="button"
+            className={`sidebar-link ${activeView === "catalogo" ? "active" : ""}`}
+            onClick={() => setActiveView("catalogo")}
+          >
             <Smartphone size={18} />
             <span>Catálogo</span>
-          </a>
+            <em className="sidebar-count">{products.length}</em>
+          </button>
 
-          <a href="#gerenciamento" className="sidebar-link">
+          <button
+            type="button"
+            className={`sidebar-link ${activeView === "produto" ? "active" : ""}`}
+            onClick={() => setActiveView("produto")}
+          >
             <Package size={18} />
-            <span>Produtos</span>
-          </a>
+            <span>Gestão de produto</span>
+          </button>
+
+          <button
+            type="button"
+            className={`sidebar-link ${activeView === "gateway" ? "active" : ""}`}
+            onClick={() => setActiveView("gateway")}
+          >
+            <CreditCard size={18} />
+            <span>Gateway</span>
+          </button>
         </nav>
 
         <div className="sidebar-divider" />
@@ -907,7 +940,15 @@ export default function AdminDashboard() {
           <div className="topbar-breadcrumb">
             <span>Workspace</span>
             <ChevronRight size={14} />
-            <strong>Visão geral</strong>
+            <strong>
+              {activeView === "gateway"
+                ? "Gateway"
+                : activeView === "catalogo"
+                  ? "Catálogo"
+                  : activeView === "produto"
+                    ? "Gestão de produto"
+                    : "Visão geral"}
+            </strong>
           </div>
 
           <div className="topbar-actions">
@@ -932,6 +973,8 @@ export default function AdminDashboard() {
         </header>
 
         <div className="admin-content">
+          {activeView === "visao-geral" && (
+          <>
           <section className="admin-welcome" id="dashboard">
             <div>
               <span className="eyebrow">ILUME / ADMINISTRAÇÃO</span>
@@ -993,6 +1036,126 @@ export default function AdminDashboard() {
             </article>
           </section>
 
+          <section className="overview-grid">
+            <article className="overview-card">
+              <div className="overview-card-head">
+                <div>
+                  <span className="eyebrow">CATÁLOGO</span>
+                  <h2>Produtos</h2>
+                </div>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setActiveView("catalogo")}
+                >
+                  Ver catálogo
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+
+              <div className="recent-list">
+                {products.slice(0, 5).map((product) => (
+                  <div className="recent-row" key={product.id}>
+                    <div className="product-name-cell">
+                      <div className="product-avatar">
+                        <Smartphone size={20} />
+                      </div>
+                      <div>
+                        <strong>{product.name}</strong>
+                        <span>{product.slug}</span>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`status-badge ${getStatusClass(
+                        product.status
+                      )}`}
+                    >
+                      <span />
+                      {getStatusLabel(product.status)}
+                    </span>
+
+                    <button
+                      type="button"
+                      className="manage-button"
+                      onClick={() => handleOpenVariants(product)}
+                    >
+                      Gerenciar
+                      <ChevronRight size={15} />
+                    </button>
+                  </div>
+                ))}
+
+                {products.length === 0 && (
+                  <div className="inline-empty">
+                    {loading
+                      ? "Carregando catálogo..."
+                      : "Nenhum produto cadastrado."}
+                  </div>
+                )}
+              </div>
+            </article>
+
+            <article className="overview-card">
+              <div className="overview-card-head">
+                <div>
+                  <span className="eyebrow">ATALHOS</span>
+                  <h2>Acesso rápido</h2>
+                </div>
+              </div>
+
+              <div className="shortcut-list">
+                <button
+                  type="button"
+                  className="shortcut-button"
+                  onClick={() => {
+                    setActiveView("catalogo");
+                    openCreateProductForm();
+                  }}
+                >
+                  <div className="panel-icon">
+                    <Plus size={19} />
+                  </div>
+                  <div>
+                    <strong>Adicionar produto</strong>
+                    <span>Cadastrar um novo item no catálogo.</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  className="shortcut-button"
+                  onClick={() => setActiveView("catalogo")}
+                >
+                  <div className="panel-icon">
+                    <Search size={19} />
+                  </div>
+                  <div>
+                    <strong>Buscar no catálogo</strong>
+                    <span>Encontrar produtos por nome ou marca.</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  className="shortcut-button"
+                  onClick={() => setActiveView("gateway")}
+                >
+                  <div className="panel-icon">
+                    <CreditCard size={19} />
+                  </div>
+                  <div>
+                    <strong>Gateway</strong>
+                    <span>Pagamentos (em desenvolvimento).</span>
+                  </div>
+                </button>
+              </div>
+            </article>
+          </section>
+          </>
+          )}
+
+          {activeView === "catalogo" && (
           <section className="catalog-section" id="catalogo">
             <div className="section-heading">
               <div>
@@ -1374,7 +1537,10 @@ export default function AdminDashboard() {
               </table>
             </div>
           </section>
+          )}
 
+          {activeView === "produto" && (
+          <>
           {selectedProduct && (
             <section
               className="management-section"
@@ -1783,6 +1949,81 @@ export default function AdminDashboard() {
                   </span>
                 )}
               </div>
+            </section>
+          )}
+
+          {!selectedProduct && (
+            <section className="catalog-section" id="gerenciamento">
+              <div className="empty-state">
+                <Package size={30} />
+                <strong>Nenhum produto selecionado</strong>
+                <span>
+                  Escolha um produto no catálogo para gerenciar imagens,
+                  variantes e publicação.
+                </span>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => setActiveView("catalogo")}
+                >
+                  Ir para o catálogo
+                </button>
+              </div>
+            </section>
+          )}
+          </>
+          )}
+
+          {activeView === "gateway" && (
+            <section className="gateway-section" id="gateway">
+              <div className="section-heading">
+                <div>
+                  <span className="eyebrow">PAGAMENTOS</span>
+                  <h2>Gateway</h2>
+                  <p>
+                    Configuração e acompanhamento do gateway de pagamento da
+                    loja.
+                  </p>
+                </div>
+              </div>
+
+              <div className="gateway-notice">
+                <div className="panel-icon">
+                  <CreditCard size={19} />
+                </div>
+                <div>
+                  <strong>Módulo em desenvolvimento</strong>
+                  <span>
+                    Esta área está reservada para a integração do gateway de
+                    pagamento.
+                  </span>
+                </div>
+              </div>
+
+              <div className="gateway-grid">
+                <article className="gateway-card">
+                  <span className="gateway-tag">Em breve</span>
+                  <h3>Provedor</h3>
+                  <p>Gateway ativo e modo de operação.</p>
+                </article>
+
+                <article className="gateway-card">
+                  <span className="gateway-tag">Em breve</span>
+                  <h3>Webhook</h3>
+                  <p>Status das notificações de pagamento.</p>
+                </article>
+
+                <article className="gateway-card">
+                  <span className="gateway-tag">Em breve</span>
+                  <h3>Transações</h3>
+                  <p>Pedidos e pagamentos recebidos.</p>
+                </article>
+              </div>
+
+              <p className="gateway-footnote">
+                Chaves e segredos não ficam no painel: permanecem em variáveis
+                de ambiente no servidor.
+              </p>
             </section>
           )}
 
