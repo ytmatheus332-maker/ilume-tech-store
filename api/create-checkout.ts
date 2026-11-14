@@ -637,12 +637,6 @@ export default async function handler(req: any, res: any) {
     const configuredGateway =
       paymentSettings.active_gateway as Gateway;
 
-    if (configuredGateway === "bravopay" && totalCents < 500) {
-      return res.status(400).json({
-        error: "O valor mínimo para gerar um PIX é R$ 5,00."
-      });
-    }
-
     if (!["mercadopago", "bravopay"].includes(configuredGateway)) {
       return res.status(500).json({
         error: "Gateway de pagamento inválido."
@@ -772,6 +766,12 @@ export default async function handler(req: any, res: any) {
       itemCount: validatedItems.length,
       totalCents
     });
+
+    if (configuredGateway === "bravopay" && totalCents < 500) {
+      return res.status(400).json({
+        error: "O valor mínimo para gerar um PIX é R$ 5,00."
+      });
+    }
 
     // =====================================================
     // 6. CRIAR OU RECUPERAR PEDIDO
