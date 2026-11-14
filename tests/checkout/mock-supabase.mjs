@@ -5,7 +5,13 @@ export function setCheckoutDatabaseState(nextState) {
 }
 
 function matches(row, filters) {
-  return Object.entries(filters).every(([key, value]) => row?.[key] === value);
+  return Object.entries(filters).every(([key, value]) => {
+    if (value && typeof value === "object" && Array.isArray(value.in)) {
+      return value.in.includes(row?.[key]);
+    }
+
+    return row?.[key] === value;
+  });
 }
 
 export function createClient() {
