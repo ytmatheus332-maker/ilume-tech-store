@@ -1,6 +1,9 @@
 import test, { beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
+import { EventEmitter } from "node:events";
 import checkoutHandler from "../../api/create-checkout.ts";
+import bravoWebhookHandler from "../../api/webhook-bravopay.ts";
 import { setCheckoutDatabaseState } from "./mock-supabase.mjs";
 
 const REQUEST_ID = "11111111-1111-4111-8111-111111111111";
@@ -13,6 +16,7 @@ const CUSTOMER = {
 };
 const PIX_CODE = "00020101021226850014BR.GOV.BCB.PIX";
 const TRANSACTION_ID = "tx_mock_123";
+const WEBHOOK_SECRET = "mock-webhook-secret";
 
 let state;
 let originalFetch;
@@ -50,7 +54,8 @@ function existingOrder() {
     total_amount_cents: 5000,
     status: "pending",
     gateway: "bravopay",
-    gateway_payment_id: null
+    gateway_payment_id: null,
+    created_at: new Date().toISOString()
   };
 }
 
@@ -78,6 +83,7 @@ function freshState(overrides = {}) {
     order: null,
     items: [],
     lookupResponse: { data: [], has_more: false, next_cursor: null },
+    lookupResponses: null,
     lookupStatus: 200,
     lookupRawBody: null,
     lookupError: null,
@@ -87,6 +93,9 @@ function freshState(overrides = {}) {
     createError: null,
     failOperation: null,
     bravoPosts: 0,
+    bravoGets: 0,
+    idempotencyResults: {},
+    createdTransactions: 0,
     lastCreate: null,
     ...overrides
   };
@@ -101,7 +110,19 @@ function installFetchMock() {
     }
 
     if (url.pathname.endsWith("/transactions") && init.method === "GET") {
+      state.bravoGets += 1;
       if (state.lookupError) throw state.lookupError;
+      if (Array.isArray(state.lookupResponses) && state.lookupResponses.length) {
+        const next = state.lookupResponses.shift();
+        if (next.error) throw next.error;
+        if (next.rawBody !== undefined) {
+          return new Response(next.rawBody, {
+            status: next.status || 200,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+        return jsonResponse(next.body, next.status || 200);
+      }
       if (state.lookupRawBody !== null) {
         return new Response(state.lookupRawBody, {
           status: state.lookupStatus,
@@ -119,12 +140,21 @@ function installFetchMock() {
         body: JSON.parse(String(init.body))
       };
 
+      const idempotencyKey = state.lastCreate.headers.get("Idempotency-Key");
+      if (idempotencyKey && state.idempotencyResults[idempotencyKey]) {
+        return jsonResponse(state.idempotencyResults[idempotencyKey], state.createStatus);
+      }
+
       if (state.createError) throw state.createError;
       if (state.createRawBody !== null) {
         return new Response(state.createRawBody, {
           status: state.createStatus,
           headers: { "Content-Type": "application/json" }
         });
+      }
+      if (state.createStatus >= 200 && state.createStatus < 300 && idempotencyKey) {
+        state.idempotencyResults[idempotencyKey] = state.createResponse;
+        state.createdTransactions += 1;
       }
       return jsonResponse(state.createResponse, state.createStatus);
     }
@@ -164,6 +194,68 @@ async function runCheckout(body = requestBody()) {
   return response;
 }
 
+function makeResponse() {
+  return {
+    statusCode: null,
+    headers: {},
+    body: null,
+    setHeader(name, value) {
+      this.headers[name.toLowerCase()] = value;
+    },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(value) {
+      this.body = value;
+      return this;
+    }
+  };
+}
+
+async function runPaymentStatus(checkoutRequestId = REQUEST_ID) {
+  const response = makeResponse();
+  await checkoutHandler({
+    method: "GET",
+    headers: { "x-checkout-request-id": checkoutRequestId }
+  }, response);
+  return response;
+}
+
+async function runDuplicateWebhook() {
+  const event = {
+    id: "evt_duplicate_mock",
+    type: "transaction.paid",
+    created: Math.floor(Date.now() / 1000),
+    data: {
+      id: TRANSACTION_ID,
+      external_reference: "7f6bccd7-372b-4780-a3e2-cf4d700a5308",
+      status: "PAID",
+      amount_cents: 5000,
+      currency: "BRL"
+    }
+  };
+  const rawBody = JSON.stringify(event);
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = createHmac("sha256", WEBHOOK_SECRET)
+    .update(`${timestamp}.${rawBody}`)
+    .digest("hex");
+  const request = new EventEmitter();
+  request.method = "POST";
+  request.headers = {
+    "content-length": String(Buffer.byteLength(rawBody)),
+    "bravopay-signature": `t=${timestamp},v1=${signature}`
+  };
+  const response = makeResponse();
+  const handling = bravoWebhookHandler(request, response);
+  process.nextTick(() => {
+    request.emit("data", Buffer.from(rawBody));
+    request.emit("end");
+  });
+  await handling;
+  return response;
+}
+
 function setRecoveredOrder() {
   state.order = existingOrder();
   state.items = orderItems();
@@ -173,6 +265,7 @@ beforeEach(() => {
   process.env.SUPABASE_URL = "https://supabase.test";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-key";
   process.env.BRAVOPAY_API_KEY = "test-bravopay-key";
+  process.env.BRAVOPAY_WEBHOOK_SECRET = WEBHOOK_SECRET;
   state = freshState();
   setCheckoutDatabaseState(state);
   originalFetch = globalThis.fetch;
@@ -251,6 +344,13 @@ for (const status of ["PAID", "EXPIRED", "REFUNDED", "CHARGEBACK"]) {
     assert.equal(response.body.payment.copyPaste, "");
     assert.equal(state.bravoPosts, 0);
     assert.equal(state.order.gateway_payment_id, TRANSACTION_ID);
+    const expectedOrderStatus = {
+      PAID: "approved",
+      EXPIRED: "failed",
+      REFUNDED: "refunded",
+      CHARGEBACK: "chargeback"
+    }[status];
+    assert.equal(state.order.status, expectedOrderStatus);
   });
 }
 
@@ -310,6 +410,35 @@ test("does not treat an empty but paginated result as confirmed absence", async 
   assert.equal(state.bravoPosts, 0);
 });
 
+test("does not reuse a recovered transaction with a different amount", async () => {
+  setRecoveredOrder();
+  state.lookupResponse = {
+    data: [makeTransaction("PENDING", { amount_cents: 5001 })],
+    has_more: false,
+    next_cursor: null
+  };
+
+  const response = await runCheckout();
+
+  assert.equal(response.statusCode, 202);
+  assert.equal(state.bravoPosts, 0);
+  assert.equal(state.order.gateway_payment_id, null);
+});
+
+test("does not treat a transaction with a different external reference as absence", async () => {
+  setRecoveredOrder();
+  state.lookupResponse = {
+    data: [makeTransaction("PENDING", { external_reference: "other-order" })],
+    has_more: false,
+    next_cursor: null
+  };
+
+  const response = await runCheckout();
+
+  assert.equal(response.statusCode, 202);
+  assert.equal(state.bravoPosts, 0);
+});
+
 test("creates only after the documented lookup confirms an empty result", async () => {
   setRecoveredOrder();
   state.lookupResponse = {
@@ -333,6 +462,42 @@ test("returns a pending result when BravoPay times out during creation", async (
   assert.equal(response.statusCode, 202);
   assert.equal(response.body.pending, true);
   assert.equal(state.order.status, "pending");
+  assert.equal(state.bravoGets, 1);
+  assert.equal(state.bravoPosts, 1);
+});
+
+test("recovers the original PIX immediately after a creation timeout", async () => {
+  state.createError = Object.assign(new Error("timeout"), { name: "TimeoutError" });
+  state.lookupResponse = {
+    data: [makeTransaction("PENDING")],
+    has_more: false,
+    next_cursor: null
+  };
+
+  const response = await runCheckout();
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.transactionId, TRANSACTION_ID);
+  assert.equal(response.body.payment.copyPaste, PIX_CODE);
+  assert.equal(state.bravoPosts, 1);
+  assert.equal(state.bravoGets, 1);
+  assert.equal(state.order.gateway_payment_id, TRANSACTION_ID);
+});
+
+test("persists a PENDING transaction when PIX data is not ready and never re-creates it", async () => {
+  state.createError = Object.assign(new Error("timeout"), { name: "TimeoutError" });
+  state.lookupResponse = {
+    data: [makeTransaction("PENDING", { pix: null })],
+    has_more: false,
+    next_cursor: null
+  };
+
+  const response = await runCheckout();
+
+  assert.equal(response.statusCode, 202);
+  assert.equal(response.body.pending, true);
+  assert.equal(state.order.gateway_payment_id, TRANSACTION_ID);
+  assert.equal(state.bravoPosts, 1);
 });
 
 test("rejects an incomplete HTTP 200 response without losing the order", async () => {
@@ -348,6 +513,7 @@ test("rejects an incomplete HTTP 200 response without losing the order", async (
   assert.equal(response.statusCode, 202);
   assert.equal(response.body.pending, true);
   assert.equal(state.order.status, "pending");
+  assert.equal(state.order.gateway_payment_id, TRANSACTION_ID);
 });
 
 test("returns a pending result when Supabase is unavailable before payment creation", async () => {
@@ -399,3 +565,122 @@ test("repeating the same request recovers the same transaction", async () => {
   assert.equal(retry.body.transactionId, first.body.transactionId);
   assert.equal(state.bravoPosts, 1);
 });
+
+test("status recovery returns PIX data and persists transaction ID without creating a charge", async () => {
+  setRecoveredOrder();
+  state.lookupResponse = {
+    data: [makeTransaction("PENDING")],
+    has_more: false,
+    next_cursor: null
+  };
+
+  const response = await runPaymentStatus();
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.state, "available");
+  assert.equal(response.body.payment.copyPaste, PIX_CODE);
+  assert.equal(state.order.gateway_payment_id, TRANSACTION_ID);
+  assert.equal(state.bravoPosts, 0);
+});
+
+test("status recovery keeps polling when a PENDING transaction has no PIX data", async () => {
+  setRecoveredOrder();
+  state.lookupResponse = {
+    data: [makeTransaction("PENDING", { pix: null })],
+    has_more: false,
+    next_cursor: null
+  };
+
+  const response = await runPaymentStatus();
+
+  assert.equal(response.statusCode, 202);
+  assert.equal(response.body.state, "processing");
+  assert.equal(state.order.gateway_payment_id, TRANSACTION_ID);
+  assert.equal(state.bravoPosts, 0);
+});
+
+test("status recovery synchronizes PAID and terminal order states", async () => {
+  for (const [gatewayStatus, orderStatus] of [
+    ["PAID", "approved"],
+    ["EXPIRED", "failed"],
+    ["REFUNDED", "refunded"],
+    ["CHARGEBACK", "chargeback"]
+  ]) {
+    setRecoveredOrder();
+    state.lookupResponse = {
+      data: [makeTransaction(gatewayStatus)],
+      has_more: false,
+      next_cursor: null
+    };
+
+    const response = await runPaymentStatus();
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body.payment.status, gatewayStatus);
+    assert.equal(state.order.status, orderStatus);
+    assert.equal(state.bravoPosts, 0);
+  }
+});
+
+test("status recovery never creates a transaction when the lookup confirms none", async () => {
+  setRecoveredOrder();
+
+  const response = await runPaymentStatus();
+
+  assert.equal(response.statusCode, 202);
+  assert.equal(response.body.state, "processing");
+  assert.equal(state.bravoPosts, 0);
+});
+
+test("status recovery preserves the order when BravoPay lookup fails", async () => {
+  setRecoveredOrder();
+  state.lookupError = Object.assign(new Error("timeout"), { name: "TimeoutError" });
+
+  const response = await runPaymentStatus();
+
+  assert.equal(response.statusCode, 202);
+  assert.equal(response.body.state, "processing");
+  assert.equal(state.bravoPosts, 0);
+});
+
+test("status recovery does not allow lookup without the checkout capability", async () => {
+  const response = await runPaymentStatus("not-a-uuid");
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(state.bravoGets, 0);
+});
+
+test("two simultaneous submissions use the same idempotency key and produce one mocked transaction", async () => {
+  const [first, second] = await Promise.all([
+    runCheckout(),
+    runCheckout()
+  ]);
+
+  assert.equal(first.statusCode, 200);
+  assert.equal(second.statusCode, 200);
+  assert.equal(first.body.transactionId, second.body.transactionId);
+  assert.equal(state.idempotencyResults[REQUEST_ID].id, TRANSACTION_ID);
+  assert.equal(state.createdTransactions, 1);
+  assert.equal(state.lastCreate.headers.get("Idempotency-Key"), REQUEST_ID);
+});
+
+test("expired idempotency window blocks a new create on a recovered order", async () => {
+  setRecoveredOrder();
+  state.order.created_at = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+  state.lookupResponse = { data: [], has_more: false, next_cursor: null };
+
+  const response = await runCheckout();
+
+  assert.equal(response.statusCode, 202);
+  assert.equal(state.bravoPosts, 0);
+});
+
+test("duplicate signed webhook event is acknowledged without reprocessing", async () => {
+  state.rpcResult = { received: true, duplicate: true };
+
+  const response = await runDuplicateWebhook();
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.duplicate, true);
+  assert.equal(state.lastRpc.name, "process_bravopay_webhook");
+});
+

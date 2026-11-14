@@ -28,7 +28,7 @@ interface CheckoutCustomer {
 
 interface PixPayment {
   orderId: string;
-  transactionId: string;
+  transactionId: string | null;
   status: string;
   amountCents: number;
   copyPaste: string;
@@ -126,6 +126,21 @@ function getCheckoutRequestId(): string {
   return newId;
 }
 
+function getStoredCheckoutRequestId(): string | null {
+  try {
+    const localId = readCheckoutRequestId(localStorage, false);
+    if (localId) return localId;
+  } catch {
+    // Tenta a chave da sessão abaixo.
+  }
+
+  try {
+    return readCheckoutRequestId(sessionStorage, true);
+  } catch {
+    return null;
+  }
+}
+
 function clearCheckoutRequestId(): void {
   memoryCheckoutRequestId = null;
 
@@ -179,6 +194,8 @@ export default function Checkout() {
   const [qrCodeImage, setQrCodeImage] = useState("");
   const [qrCodeError, setQrCodeError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [recoveryRequestId, setRecoveryRequestId] = useState<string | null>(null);
+  const [recoveryPending, setRecoveryPending] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -233,6 +250,101 @@ export default function Checkout() {
     };
   }, []);
 
+  useEffect(() => {
+    const savedRequestId = getStoredCheckoutRequestId();
+    if (savedRequestId) setRecoveryRequestId(savedRequestId);
+  }, []);
+
+  useEffect(() => {
+    if (!recoveryRequestId || pixPayment) return;
+
+    const requestId = recoveryRequestId;
+    let active = true;
+    let timer: number | null = null;
+    let pollCount = 0;
+    const intervals = [0, 2000, 4000, 8000, 15000];
+
+    setRecoveryPending(true);
+
+    async function pollPaymentStatus() {
+      try {
+        const response = await fetch("/api/create-checkout", {
+          method: "GET",
+          cache: "no-store",
+          headers: { "X-Checkout-Request-Id": requestId }
+        });
+        const data = await response.json().catch(() => null);
+
+        if (!active) return;
+
+        if (data?.state === "not_found") {
+          setRecoveryPending(false);
+          setRecoveryRequestId(null);
+          return;
+        }
+
+        const payment = data?.payment;
+        const status = String(payment?.status || "").toUpperCase();
+        const terminalStatus = [
+          "PAID", "EXPIRED", "FAILED", "REFUNDED", "CHARGEBACK"
+        ].includes(status);
+
+        if (
+          data?.success === true &&
+          data.orderId &&
+          (data.state === "available" || data.state === "paid" || data.state === "terminal") &&
+          payment &&
+          (data.transactionId || terminalStatus) &&
+          (Boolean(payment.copyPaste) || terminalStatus)
+        ) {
+          const recoveredPayment: PixPayment = {
+            orderId: data.orderId,
+            transactionId: data.transactionId,
+            status,
+            amountCents: Number(payment.amountCents),
+            copyPaste: payment.copyPaste || "",
+            expiresAt: payment.expiresAt || null
+          };
+
+          setPixPayment(recoveredPayment);
+          setRecoveryPending(false);
+          setRecoveryRequestId(null);
+          setError(null);
+
+          if (recoveredPayment.copyPaste) {
+            try {
+              const image = await QRCode.toDataURL(recoveredPayment.copyPaste, {
+                errorCorrectionLevel: "M",
+                margin: 2,
+                width: 260
+              });
+              if (active) setQrCodeImage(image);
+            } catch (qrError) {
+              console.error("ILUME: Erro ao gerar QR Code.", qrError);
+              if (active) setQrCodeError(true);
+            }
+          }
+          return;
+        }
+      } catch {
+        // Falha temporária de consulta: mantém a identidade e tenta novamente.
+      }
+
+      if (active) {
+        const delay = intervals[Math.min(pollCount, intervals.length - 1)];
+        pollCount += 1;
+        timer = window.setTimeout(pollPaymentStatus, delay || 15000);
+      }
+    }
+
+    pollPaymentStatus();
+
+    return () => {
+      active = false;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [recoveryRequestId, pixPayment]);
+
   async function handleFinishCheckout(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -264,6 +376,8 @@ export default function Checkout() {
       return;
     }
 
+    let submittedCheckoutRequestId: string | null = null;
+
     try {
       setLoading(true);
       setError(null);
@@ -276,6 +390,7 @@ export default function Checkout() {
       };
 
       const checkoutRequestId = getCheckoutRequestId();
+      submittedCheckoutRequestId = checkoutRequestId;
 
       const itemsPayload = cart.map((item) => ({
         variantId: item.variantId || item.id,
@@ -294,18 +409,24 @@ export default function Checkout() {
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
 
       // Resposta inconclusiva: preservar a chave para retry.
       if (!response.ok || !data?.success) {
         if (data?.terminal === true) {
           clearCheckoutRequestId();
+          setRecoveryRequestId(null);
+          setRecoveryPending(false);
+        } else {
+          setRecoveryRequestId(checkoutRequestId);
+          setRecoveryPending(true);
         }
 
-        throw new Error(
+        setError(
           data?.error ||
             "Não foi possível confirmar o pagamento. Sua tentativa foi preservada; tente recuperar este mesmo pedido em instantes."
         );
+        return;
       }
 
       // Mercado Pago.
@@ -318,6 +439,8 @@ export default function Checkout() {
 
         clearCheckoutRequestId();
         clearCart();
+        setRecoveryRequestId(null);
+        setRecoveryPending(false);
 
         window.location.href = data.paymentUrl;
         return;
@@ -346,6 +469,8 @@ export default function Checkout() {
         };
 
         setPixPayment(payment);
+        setRecoveryRequestId(null);
+        setRecoveryPending(false);
 
         if (payment.copyPaste) {
           try {
@@ -372,6 +497,10 @@ export default function Checkout() {
         "A resposta do gateway possui um formato inesperado."
       );
     } catch (err) {
+      if (submittedCheckoutRequestId) {
+        setRecoveryRequestId(submittedCheckoutRequestId);
+        setRecoveryPending(true);
+      }
       setError(
         err instanceof Error
           ? err.message
@@ -612,6 +741,15 @@ export default function Checkout() {
               </div>
             )}
 
+            {recoveryPending && (
+              <div className="checkout-alert" role="status">
+                <Clock3 size={18} />
+                <span>
+                  Estamos consultando a mesma cobrança na BravoPay. Esta tela pode permanecer aberta; não será criada outra cobrança durante a consulta.
+                </span>
+              </div>
+            )}
+
             <div className="checkout-layout">
               <form
                 className="checkout-form"
@@ -820,3 +958,4 @@ export default function Checkout() {
     </main>
   );
 }
+

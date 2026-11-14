@@ -16,6 +16,13 @@ function matches(row, filters) {
 
 export function createClient() {
   return {
+    rpc(name, parameters) {
+      databaseState.lastRpc = { name, parameters };
+      return Promise.resolve({
+        data: databaseState.rpcResult || { received: true },
+        error: null
+      });
+    },
     from(table) {
       let operation = "select";
       let payload = null;
@@ -48,6 +55,7 @@ export function createClient() {
           databaseState.order = {
             id: "order-mock-1",
             ...row,
+            created_at: new Date().toISOString(),
             gateway_payment_id: null
           };
 
@@ -130,3 +138,4 @@ export function createClient() {
     }
   };
 }
+
