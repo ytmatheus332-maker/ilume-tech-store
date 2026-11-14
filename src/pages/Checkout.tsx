@@ -408,12 +408,12 @@ export default function Checkout() {
       : pixStatus === "FAILED"
         ? "Pagamento não concluído"
         : pixStatus === "REFUNDED"
-        ? "Pagamento estornado"
-        : pixStatus === "CHARGEBACK"
-          ? "Pagamento contestado"
-          : isPixPaid
-            ? "Pagamento aprovado"
-            : "Pagamento aguardando confirmação";
+          ? "Pagamento estornado"
+          : pixStatus === "CHARGEBACK"
+            ? "Pagamento contestado"
+            : isPixPaid
+              ? "Pagamento aprovado"
+              : "Pagamento aguardando confirmação";
 
   const pixStatusMessage =
     pixStatus === "EXPIRED"
@@ -421,12 +421,12 @@ export default function Checkout() {
       : pixStatus === "FAILED"
         ? "Esta cobrança não foi concluída. Não tente pagá-la novamente."
         : pixStatus === "REFUNDED"
-        ? "Este pagamento foi estornado."
-        : pixStatus === "CHARGEBACK"
-          ? "Este pagamento está contestado."
-          : isPixPaid
-            ? "Seu pagamento foi confirmado pela BravoPay."
-            : "O pedido ainda não está confirmado.";
+          ? "Este pagamento foi estornado."
+          : pixStatus === "CHARGEBACK"
+            ? "Este pagamento está contestado."
+            : isPixPaid
+              ? "Seu pagamento foi confirmado pela BravoPay."
+              : "O pedido ainda não está confirmado.";
 
   if (cart.length === 0 && !pixPayment) {
     return (
@@ -525,7 +525,7 @@ export default function Checkout() {
               </strong>
             </div>
 
-            {!isPixPaid && (
+            {canPayWithPix && (
               <div className="checkout-pix-copy">
               <label htmlFor="pix-copy-paste">
                 PIX copia e cola
@@ -558,7 +558,7 @@ export default function Checkout() {
               </div>
             )}
 
-            {!isPixPaid && (
+            {canPayWithPix && (
               <div className="checkout-pix-expiration">
               <Clock3 size={15} />
               <span>
