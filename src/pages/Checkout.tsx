@@ -28,21 +28,9 @@ interface PixPayment {
   expiresAt: string | null;
 }
 
-interface CheckoutIdentity {
-  fingerprint: string;
-  id: string;
-}
-
-interface CheckoutCustomer {
-  name: string;
-  email: string;
-  phone: string;
-  cpf: string;
-}
-
 const CHECKOUT_REQUEST_KEY = "ilume_checkout_request_id";
 
-let memoryCheckoutIdentity: CheckoutIdentity | null = null;
+let memoryCheckoutRequestId: string | null = null;
 
 function createCheckoutRequestId(): string {
   return crypto.randomUUID();
@@ -55,82 +43,90 @@ function isValidUUID(value: unknown): value is string {
   );
 }
 
-function normalizeDigits(value: string): string {
-  return value.replace(/\D/g, "");
-}
+function readCheckoutRequestId(
+  storage: Storage,
+  allowLegacyJson: boolean
+): string | null {
+  const savedValue = storage.getItem(CHECKOUT_REQUEST_KEY);
 
-function createCheckoutFingerprint(
-  cart: any[],
-  customer: CheckoutCustomer
-): string {
-  const normalizedItems = cart
-    .map((item) => ({
-      variantId: String(item.variantId || item.id || ""),
-      quantity: Number(item.quantity || 1)
-    }))
-    .sort((a, b) => a.variantId.localeCompare(b.variantId));
+  if (isValidUUID(savedValue)) {
+    return savedValue;
+  }
 
-  return JSON.stringify({
-    items: normalizedItems,
-    customer: {
-      name: customer.name.trim(),
-      email: customer.email.trim().toLowerCase(),
-      phone: normalizeDigits(customer.phone),
-      cpf: normalizeDigits(customer.cpf)
-    }
-  });
-}
+  if (!allowLegacyJson || !savedValue) {
+    return null;
+  }
 
-function getCheckoutRequestId(fingerprint: string): string {
   try {
-    const savedValue = sessionStorage.getItem(CHECKOUT_REQUEST_KEY);
-
-    if (savedValue) {
-      const saved = JSON.parse(savedValue) as CheckoutIdentity;
-
-      if (
-        saved.fingerprint === fingerprint &&
-        isValidUUID(saved.id)
-      ) {
-        memoryCheckoutIdentity = saved;
-        return saved.id;
-      }
-    }
-
-    const identity: CheckoutIdentity = {
-      fingerprint,
-      id: createCheckoutRequestId()
-    };
-
-    sessionStorage.setItem(
-      CHECKOUT_REQUEST_KEY,
-      JSON.stringify(identity)
-    );
-
-    memoryCheckoutIdentity = identity;
-
-    return identity.id;
+    const legacyIdentity = JSON.parse(savedValue) as { id?: unknown };
+    return isValidUUID(legacyIdentity.id) ? legacyIdentity.id : null;
   } catch {
-    if (
-      memoryCheckoutIdentity?.fingerprint === fingerprint &&
-      isValidUUID(memoryCheckoutIdentity.id)
-    ) {
-      return memoryCheckoutIdentity.id;
-    }
-
-    const identity: CheckoutIdentity = {
-      fingerprint,
-      id: createCheckoutRequestId()
-    };
-
-    memoryCheckoutIdentity = identity;
-
-    return identity.id;
+    return null;
   }
 }
 
+function getCheckoutRequestId(): string {
+  if (isValidUUID(memoryCheckoutRequestId)) {
+    return memoryCheckoutRequestId;
+  }
+
+  let savedId: string | null = null;
+
+  try {
+    savedId = readCheckoutRequestId(localStorage, false);
+  } catch {
+    // Tenta recuperar o identificador da sessão abaixo.
+  }
+
+  if (!savedId) {
+    try {
+      savedId = readCheckoutRequestId(sessionStorage, true);
+    } catch {
+      // Um novo identificador ficará em memória nesta sessão.
+    }
+  }
+
+  if (savedId) {
+    memoryCheckoutRequestId = savedId;
+
+    try {
+      localStorage.setItem(CHECKOUT_REQUEST_KEY, savedId);
+      sessionStorage.removeItem(CHECKOUT_REQUEST_KEY);
+    } catch {
+      try {
+        sessionStorage.setItem(CHECKOUT_REQUEST_KEY, savedId);
+      } catch {
+        // A memória mantém a identidade até o fim desta sessão.
+      }
+    }
+
+    return savedId;
+  }
+
+  const newId = createCheckoutRequestId();
+  memoryCheckoutRequestId = newId;
+
+  try {
+    localStorage.setItem(CHECKOUT_REQUEST_KEY, newId);
+  } catch {
+    try {
+      sessionStorage.setItem(CHECKOUT_REQUEST_KEY, newId);
+    } catch {
+      // A memória mantém a identidade até o fim desta sessão.
+    }
+  }
+
+  return newId;
+}
+
 function clearCheckoutRequestId(): void {
-  memoryCheckoutIdentity = null;
+  memoryCheckoutRequestId = null;
+
+  try {
+    localStorage.removeItem(CHECKOUT_REQUEST_KEY);
+  } catch {
+    // A chave de sessão poderá ser removida separadamente.
+  }
 
   try {
     sessionStorage.removeItem(CHECKOUT_REQUEST_KEY);
@@ -190,7 +186,7 @@ export default function Checkout() {
           cache: "no-store",
         });
 
-        const data = await response.json();
+        const data = await response.json().catch(() => null);
 
         if (!response.ok || !data.success) {
           throw new Error(
@@ -272,12 +268,7 @@ export default function Checkout() {
         cpf
       };
 
-      const fingerprint = createCheckoutFingerprint(
-        cart,
-        customer
-      );
-
-      const checkoutRequestId = getCheckoutRequestId(fingerprint);
+      const checkoutRequestId = getCheckoutRequestId();
 
       const itemsPayload = cart.map((item) => ({
         variantId: item.variantId || item.id,
@@ -299,10 +290,14 @@ export default function Checkout() {
       const data = await response.json();
 
       // Resposta inconclusiva: preservar a chave para retry.
-      if (!response.ok || !data.success) {
+      if (!response.ok || !data?.success) {
+        if (data?.terminal === true) {
+          clearCheckoutRequestId();
+        }
+
         throw new Error(
-          data.error ||
-            "Não foi possível confirmar o resultado do pagamento. Tente novamente."
+          data?.error ||
+            "Não foi possível confirmar o pagamento. Sua tentativa foi preservada; tente recuperar este mesmo pedido em instantes."
         );
       }
 
@@ -329,13 +324,15 @@ export default function Checkout() {
         data.transactionId &&
         (
           data.payment.copyPaste ||
-          String(data.payment.status || "").toUpperCase() === "PAID"
+          ["PAID", "EXPIRED", "FAILED", "REFUNDED", "CHARGEBACK"].includes(
+            String(data.payment.status || "").toUpperCase()
+          )
         )
       ) {
         const payment: PixPayment = {
           orderId: data.orderId,
           transactionId: data.transactionId,
-          status: data.payment.status || "PENDING",
+          status: String(data.payment.status || "PENDING").toUpperCase(),
           amountCents: Number(data.payment.amountCents),
           copyPaste: data.payment.copyPaste || "",
           expiresAt: data.payment.expiresAt || null,
@@ -575,7 +572,19 @@ export default function Checkout() {
                   : "Após pagar, aguarde a confirmação do pagamento. Não realize outro pagamento para este pedido."}
             </p>
 
-            <Link to="/" className="checkout-confirmation-button">
+            <Link
+              to="/"
+              className="checkout-confirmation-button"
+              onClick={() => {
+                if (isPixPaid || isPixTerminal) {
+                  clearCheckoutRequestId();
+
+                  if (isPixPaid) {
+                    clearCart();
+                  }
+                }
+              }}
+            >
               Voltar para a loja
             </Link>
           </section>
