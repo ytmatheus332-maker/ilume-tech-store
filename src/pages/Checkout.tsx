@@ -19,6 +19,13 @@ import "./Checkout.css";
 
 type Gateway = "mercadopago" | "bravopay";
 
+interface CheckoutCustomer {
+  name: string;
+  email: string;
+  phone: string;
+  cpf: string;
+}
+
 interface PixPayment {
   orderId: string;
   transactionId: string;
