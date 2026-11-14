@@ -1,3 +1,4 @@
+
 import {
   useEffect,
   useMemo,
@@ -7,6 +8,7 @@ import {
 } from "react";
 
 import { supabase } from "../../lib/supabase";
+import GatewaySettings from "../../components/admin/GatewaySettings";
 import "./AdminDashboard.css";
 
 import {
@@ -36,7 +38,6 @@ import {
 } from "lucide-react";
 
 type CampaignType = "promotion" | "black_friday" | null;
-
 type ProductStatus = "draft" | "published" | "inactive" | "archived";
 
 interface CategorySummary {
@@ -974,1058 +975,1024 @@ export default function AdminDashboard() {
 
         <div className="admin-content">
           {activeView === "visao-geral" && (
-          <>
-          <section className="admin-welcome" id="dashboard">
-            <div>
-              <span className="eyebrow">ILUME / ADMINISTRAÇÃO</span>
-              <h1>Visão geral</h1>
-              <p>
-                Gerencie seu catálogo, produtos, preços e campanhas em
-                um só lugar.
-              </p>
-            </div>
-
-            <div className="welcome-mark">
-              <Layers size={26} />
-            </div>
-          </section>
-
-          <section className="admin-stats">
-            <article className="stat-card">
-              <div className="stat-card-top">
-                <span>Total de produtos</span>
-                <div className="stat-icon neutral">
-                  <Package size={19} />
-                </div>
-              </div>
-              <strong>{products.length}</strong>
-              <small>Produtos no catálogo</small>
-            </article>
-
-            <article className="stat-card">
-              <div className="stat-card-top">
-                <span>Publicados</span>
-                <div className="stat-icon green">
-                  <CheckCircle size={19} />
-                </div>
-              </div>
-              <strong>{publishedCount}</strong>
-              <small>Disponíveis na loja</small>
-            </article>
-
-            <article className="stat-card">
-              <div className="stat-card-top">
-                <span>Rascunhos</span>
-                <div className="stat-icon amber">
-                  <Archive size={19} />
-                </div>
-              </div>
-              <strong>{draftCount}</strong>
-              <small>Aguardando publicação</small>
-            </article>
-
-            <article className="stat-card">
-              <div className="stat-card-top">
-                <span>Em destaque</span>
-                <div className="stat-icon purple">
-                  <Star size={19} />
-                </div>
-              </div>
-              <strong>{featuredCount}</strong>
-              <small>Produtos destacados</small>
-            </article>
-          </section>
-
-          <section className="overview-grid">
-            <article className="overview-card">
-              <div className="overview-card-head">
+            <>
+              <section className="admin-welcome" id="dashboard">
                 <div>
-                  <span className="eyebrow">CATÁLOGO</span>
-                  <h2>Produtos</h2>
+                  <span className="eyebrow">ILUME / ADMINISTRAÇÃO</span>
+                  <h1>Visão geral</h1>
+                  <p>
+                    Gerencie seu catálogo, produtos, preços e campanhas em
+                    um só lugar.
+                  </p>
                 </div>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => setActiveView("catalogo")}
-                >
-                  Ver catálogo
-                  <ChevronRight size={15} />
-                </button>
-              </div>
 
-              <div className="recent-list">
-                {products.slice(0, 5).map((product) => (
-                  <div className="recent-row" key={product.id}>
-                    <div className="product-name-cell">
-                      <div className="product-avatar">
-                        <Smartphone size={20} />
-                      </div>
-                      <div>
-                        <strong>{product.name}</strong>
-                        <span>{product.slug}</span>
-                      </div>
+                <div className="welcome-mark">
+                  <Layers size={26} />
+                </div>
+              </section>
+
+              <section className="admin-stats">
+                <article className="stat-card">
+                  <div className="stat-card-top">
+                    <span>Total de produtos</span>
+                    <div className="stat-icon neutral">
+                      <Package size={19} />
                     </div>
+                  </div>
+                  <strong>{products.length}</strong>
+                  <small>Produtos no catálogo</small>
+                </article>
 
-                    <span
-                      className={`status-badge ${getStatusClass(
-                        product.status
-                      )}`}
-                    >
-                      <span />
-                      {getStatusLabel(product.status)}
-                    </span>
+                <article className="stat-card">
+                  <div className="stat-card-top">
+                    <span>Publicados</span>
+                    <div className="stat-icon green">
+                      <CheckCircle size={19} />
+                    </div>
+                  </div>
+                  <strong>{publishedCount}</strong>
+                  <small>Disponíveis na loja</small>
+                </article>
 
+                <article className="stat-card">
+                  <div className="stat-card-top">
+                    <span>Rascunhos</span>
+                    <div className="stat-icon amber">
+                      <Archive size={19} />
+                    </div>
+                  </div>
+                  <strong>{draftCount}</strong>
+                  <small>Aguardando publicação</small>
+                </article>
+
+                <article className="stat-card">
+                  <div className="stat-card-top">
+                    <span>Em destaque</span>
+                    <div className="stat-icon purple">
+                      <Star size={19} />
+                    </div>
+                  </div>
+                  <strong>{featuredCount}</strong>
+                  <small>Produtos destacados</small>
+                </article>
+              </section>
+
+              <section className="overview-grid">
+                <article className="overview-card">
+                  <div className="overview-card-head">
+                    <div>
+                      <span className="eyebrow">CATÁLOGO</span>
+                      <h2>Produtos</h2>
+                    </div>
                     <button
                       type="button"
-                      className="manage-button"
-                      onClick={() => handleOpenVariants(product)}
+                      className="secondary-button"
+                      onClick={() => setActiveView("catalogo")}
                     >
-                      Gerenciar
+                      Ver catálogo
                       <ChevronRight size={15} />
                     </button>
                   </div>
-                ))}
 
-                {products.length === 0 && (
-                  <div className="inline-empty">
-                    {loading
-                      ? "Carregando catálogo..."
-                      : "Nenhum produto cadastrado."}
-                  </div>
-                )}
-              </div>
-            </article>
+                  <div className="recent-list">
+                    {products.slice(0, 5).map((product) => (
+                      <div className="recent-row" key={product.id}>
+                        <div className="product-name-cell">
+                          <div className="product-avatar">
+                            <Smartphone size={20} />
+                          </div>
+                          <div>
+                            <strong>{product.name}</strong>
+                            <span>{product.slug}</span>
+                          </div>
+                        </div>
 
-            <article className="overview-card">
-              <div className="overview-card-head">
-                <div>
-                  <span className="eyebrow">ATALHOS</span>
-                  <h2>Acesso rápido</h2>
-                </div>
-              </div>
+                        <span
+                          className={`status-badge ${getStatusClass(
+                            product.status
+                          )}`}
+                        >
+                          <span />
+                          {getStatusLabel(product.status)}
+                        </span>
 
-              <div className="shortcut-list">
-                <button
-                  type="button"
-                  className="shortcut-button"
-                  onClick={() => {
-                    setActiveView("catalogo");
-                    openCreateProductForm();
-                  }}
-                >
-                  <div className="panel-icon">
-                    <Plus size={19} />
-                  </div>
-                  <div>
-                    <strong>Adicionar produto</strong>
-                    <span>Cadastrar um novo item no catálogo.</span>
-                  </div>
-                </button>
+                        <button
+                          type="button"
+                          className="manage-button"
+                          onClick={() => handleOpenVariants(product)}
+                        >
+                          Gerenciar
+                          <ChevronRight size={15} />
+                        </button>
+                      </div>
+                    ))}
 
-                <button
-                  type="button"
-                  className="shortcut-button"
-                  onClick={() => setActiveView("catalogo")}
-                >
-                  <div className="panel-icon">
-                    <Search size={19} />
+                    {products.length === 0 && (
+                      <div className="inline-empty">
+                        {loading
+                          ? "Carregando catálogo..."
+                          : "Nenhum produto cadastrado."}
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <strong>Buscar no catálogo</strong>
-                    <span>Encontrar produtos por nome ou marca.</span>
-                  </div>
-                </button>
+                </article>
 
-                <button
-                  type="button"
-                  className="shortcut-button"
-                  onClick={() => setActiveView("gateway")}
-                >
-                  <div className="panel-icon">
-                    <CreditCard size={19} />
+                <article className="overview-card">
+                  <div className="overview-card-head">
+                    <div>
+                      <span className="eyebrow">ATALHOS</span>
+                      <h2>Acesso rápido</h2>
+                    </div>
                   </div>
-                  <div>
-                    <strong>Gateway</strong>
-                    <span>Pagamentos (em desenvolvimento).</span>
+
+                  <div className="shortcut-list">
+                    <button
+                      type="button"
+                      className="shortcut-button"
+                      onClick={() => {
+                        setActiveView("catalogo");
+                        openCreateProductForm();
+                      }}
+                    >
+                      <div className="panel-icon">
+                        <Plus size={19} />
+                      </div>
+                      <div>
+                        <strong>Adicionar produto</strong>
+                        <span>Cadastrar um novo item no catálogo.</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="shortcut-button"
+                      onClick={() => setActiveView("catalogo")}
+                    >
+                      <div className="panel-icon">
+                        <Search size={19} />
+                      </div>
+                      <div>
+                        <strong>Buscar no catálogo</strong>
+                        <span>Encontrar produtos por nome ou marca.</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="shortcut-button"
+                      onClick={() => setActiveView("gateway")}
+                    >
+                      <div className="panel-icon">
+                        <CreditCard size={19} />
+                      </div>
+                      <div>
+                        <strong>Gateway</strong>
+                        <span>Gerenciar provedores de pagamento.</span>
+                      </div>
+                    </button>
                   </div>
-                </button>
-              </div>
-            </article>
-          </section>
-          </>
+                </article>
+              </section>
+            </>
           )}
 
           {activeView === "catalogo" && (
-          <section className="catalog-section" id="catalogo">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">GESTÃO DE PRODUTOS</span>
-                <h2>Catálogo</h2>
-                <p>
-                  Consulte, cadastre e gerencie os produtos da ILUME.
-                </p>
-              </div>
-
-              <button
-                className="primary-button"
-                onClick={openCreateProductForm}
-                disabled={saving}
-              >
-                <Plus size={17} />
-                Adicionar produto
-              </button>
-            </div>
-
-            {productFormOpen && (
-              <div className="product-form-card" id="product-form">
-                <div className="product-form-heading">
-                  <div className="product-form-title">
-                    <div className="panel-icon">
-                      {editingProductId ? (
-                        <Pencil size={19} />
-                      ) : (
-                        <FilePlus2 size={19} />
-                      )}
-                    </div>
-
-                    <div>
-                      <h3>
-                        {editingProductId
-                          ? "Editar produto"
-                          : "Cadastrar novo produto"}
-                      </h3>
-                      <p>
-                        {editingProductId
-                          ? "Atualize as informações básicas do produto."
-                          : "Cadastre qualquer produto no catálogo da ILUME."}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="icon-button"
-                    onClick={closeProductForm}
-                    aria-label="Fechar formulário"
-                    title="Fechar"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-
-                <form
-                  className="product-form"
-                  onSubmit={handleSaveProduct}
-                >
-                  <div className="product-form-grid">
-                    <div className="form-field">
-                      <label htmlFor="product-name">
-                        Nome do produto *
-                      </label>
-                      <input
-                        id="product-name"
-                        type="text"
-                        placeholder="Ex: iPhone 17 Pro Max"
-                        value={productForm.name}
-                        onChange={(event) =>
-                          handleProductNameChange(event.target.value)
-                        }
-                        maxLength={160}
-                        required
-                      />
-                    </div>
-
-                    <div className="form-field">
-                      <label htmlFor="product-category">
-                        Categoria
-                      </label>
-                      <select
-                        id="product-category"
-                        value={productForm.category_id}
-                        onChange={(event) =>
-                          handleProductFormChange(
-                            "category_id",
-                            event.target.value
-                          )
-                        }
-                      >
-                        <option value="">Sem categoria</option>
-                        {categories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="form-field">
-                      <label htmlFor="product-brand">Marca</label>
-                      <input
-                        id="product-brand"
-                        type="text"
-                        placeholder="Ex: Apple"
-                        value={productForm.brand}
-                        onChange={(event) =>
-                          handleProductFormChange(
-                            "brand",
-                            event.target.value
-                          )
-                        }
-                        maxLength={100}
-                      />
-                    </div>
-
-                    <div className="form-field">
-                      <label htmlFor="product-model">Modelo</label>
-                      <input
-                        id="product-model"
-                        type="text"
-                        placeholder="Ex: A3105"
-                        value={productForm.model}
-                        onChange={(event) =>
-                          handleProductFormChange(
-                            "model",
-                            event.target.value
-                          )
-                        }
-                        maxLength={120}
-                      />
-                    </div>
-
-                    <div className="form-field product-form-full">
-                      <label htmlFor="product-slug">
-                        Slug / endereço do produto *
-                      </label>
-                      <input
-                        id="product-slug"
-                        type="text"
-                        placeholder="nome-do-produto"
-                        value={productForm.slug}
-                        onChange={(event) =>
-                          handleProductSlugChange(event.target.value)
-                        }
-                        maxLength={180}
-                        required
-                      />
-                      <small>
-                        Gerado automaticamente pelo nome. Você também pode
-                        personalizar; não pode se repetir.
-                      </small>
-                    </div>
-
-                    <div className="form-field product-form-full">
-                      <label htmlFor="product-short-description">
-                        Descrição curta
-                      </label>
-                      <textarea
-                        id="product-short-description"
-                        rows={2}
-                        maxLength={300}
-                        placeholder="Resumo do produto para a vitrine."
-                        value={productForm.short_description}
-                        onChange={(event) =>
-                          handleProductFormChange(
-                            "short_description",
-                            event.target.value
-                          )
-                        }
-                      />
-                    </div>
-
-                    <div className="form-field product-form-full">
-                      <label htmlFor="product-description">
-                        Descrição completa
-                      </label>
-                      <textarea
-                        id="product-description"
-                        rows={5}
-                        placeholder="Informações detalhadas sobre o produto."
-                        value={productForm.description}
-                        onChange={(event) =>
-                          handleProductFormChange(
-                            "description",
-                            event.target.value
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  <div className="product-form-footer">
-                    <span>
-                      {editingProductId
-                        ? "O status atual do produto será preservado."
-                        : "O produto será criado como rascunho e não aparecerá na loja até ser publicado."}
-                    </span>
-
-                    <div className="product-form-actions">
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={closeProductForm}
-                        disabled={saving}
-                      >
-                        Cancelar
-                      </button>
-
-                      <button
-                        type="submit"
-                        className="primary-button"
-                        disabled={saving}
-                      >
-                        <Save size={16} />
-                        {saving
-                          ? "Salvando..."
-                          : editingProductId
-                            ? "Salvar alterações"
-                            : "Cadastrar produto"}
-                      </button>
-                    </div>
-                  </div>
-                </form>
-              </div>
-            )}
-
-            <div className="catalog-toolbar">
-              <div className="search-box">
-                <Search size={17} />
-                <input
-                  type="search"
-                  placeholder="Buscar por nome, marca, modelo ou categoria..."
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                />
-              </div>
-
-              <span className="catalog-counter">
-                {filteredProducts.length} de {products.length} produtos
-              </span>
-            </div>
-
-            <div className="catalog-table-wrapper">
-              <table className="catalog-table">
-                <thead>
-                  <tr>
-                    <th>Produto</th>
-                    <th>Categoria</th>
-                    <th>Status</th>
-                    <th>Campanha</th>
-                    <th className="table-action-heading">Ações</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {filteredProducts.map((product) => {
-                    const category = categories.find(
-                      (item) => item.id === product.category_id
-                    );
-
-                    return (
-                      <tr key={product.id}>
-                        <td>
-                          <div className="product-name-cell">
-                            <div className="product-avatar">
-                              <Smartphone size={20} />
-                            </div>
-
-                            <div>
-                              <strong>{product.name}</strong>
-                              <span>{product.slug}</span>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td>
-                          <span className="category-label">
-                            {category?.name || "Sem categoria"}
-                          </span>
-                        </td>
-
-                        <td>
-                          <span
-                            className={`status-badge ${getStatusClass(
-                              product.status
-                            )}`}
-                          >
-                            <span />
-                            {getStatusLabel(product.status)}
-                          </span>
-                        </td>
-
-                        <td>
-                          <div className="campaign-cell">
-                            {product.is_featured && (
-                              <span className="mini-tag featured">
-                                <Star size={12} /> Destaque
-                              </span>
-                            )}
-
-                            {product.campaign_type === "promotion" && (
-                              <span className="mini-tag promotion">
-                                Promoção
-                              </span>
-                            )}
-
-                            {product.campaign_type === "black_friday" && (
-                              <span className="mini-tag black">
-                                Black Friday
-                              </span>
-                            )}
-
-                            {product.badge_label && (
-                              <span className="mini-tag custom">
-                                {product.badge_label}
-                              </span>
-                            )}
-
-                            {!product.is_featured &&
-                              !product.campaign_type &&
-                              !product.badge_label && (
-                                <span className="empty-campaign">
-                                  Sem campanha
-                                </span>
-                              )}
-                          </div>
-                        </td>
-
-                        <td className="table-action-cell">
-                          <div className="product-row-actions">
-                            <button
-                              className="edit-button"
-                              onClick={() =>
-                                openEditProductForm(product)
-                              }
-                              title="Editar dados do produto"
-                            >
-                              <Pencil size={14} />
-                              Editar
-                            </button>
-
-                            <button
-                              className="manage-button"
-                              onClick={() => handleOpenVariants(product)}
-                            >
-                              Gerenciar
-                              <ChevronRight size={15} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  {filteredProducts.length === 0 && (
-                    <tr>
-                      <td colSpan={5}>
-                        <div className="empty-state">
-                          <Package size={30} />
-                          <strong>
-                            {loading
-                              ? "Carregando catálogo..."
-                              : "Nenhum produto encontrado"}
-                          </strong>
-                          <span>
-                            {searchTerm
-                              ? "Tente pesquisar por outro nome, marca ou categoria."
-                              : "Cadastre seu primeiro produto para começar."}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-          )}
-
-          {activeView === "produto" && (
-          <>
-          {selectedProduct && (
-            <section
-              className="management-section"
-              id="gerenciamento"
-            >
-              <div className="management-heading">
+            <section className="catalog-section" id="catalogo">
+              <div className="section-heading">
                 <div>
-                  <span className="eyebrow">GERENCIAMENTO INDIVIDUAL</span>
-                  <h2>{selectedProduct.name}</h2>
+                  <span className="eyebrow">GESTÃO DE PRODUTOS</span>
+                  <h2>Catálogo</h2>
                   <p>
-                    Configurações, imagens, variantes e publicação.
+                    Consulte, cadastre e gerencie os produtos da ILUME.
                   </p>
                 </div>
 
                 <button
-                  className="icon-button close-button"
-                  onClick={closeProduct}
-                  aria-label="Fechar gerenciamento"
-                  title="Fechar"
+                  className="primary-button"
+                  onClick={openCreateProductForm}
+                  disabled={saving}
                 >
-                  <X size={19} />
+                  <Plus size={17} />
+                  Adicionar produto
                 </button>
               </div>
 
-              <div className="management-grid">
-                <div className="management-main">
-                  <article className="admin-panel">
-                    <div className="panel-heading">
+              {productFormOpen && (
+                <div className="product-form-card" id="product-form">
+                  <div className="product-form-heading">
+                    <div className="product-form-title">
                       <div className="panel-icon">
-                        <Tag size={19} />
+                        {editingProductId ? (
+                          <Pencil size={19} />
+                        ) : (
+                          <FilePlus2 size={19} />
+                        )}
                       </div>
+
                       <div>
-                        <h3>Personalização e campanhas</h3>
-                        <p>Configure a apresentação comercial.</p>
+                        <h3>
+                          {editingProductId
+                            ? "Editar produto"
+                            : "Cadastrar novo produto"}
+                        </h3>
+                        <p>
+                          {editingProductId
+                            ? "Atualize as informações básicas do produto."
+                            : "Cadastre qualquer produto no catálogo da ILUME."}
+                        </p>
                       </div>
                     </div>
 
-                    <div className="panel-content">
-                      <label className="toggle-field">
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={closeProductForm}
+                      aria-label="Fechar formulário"
+                      title="Fechar"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  <form
+                    className="product-form"
+                    onSubmit={handleSaveProduct}
+                  >
+                    <div className="product-form-grid">
+                      <div className="form-field">
+                        <label htmlFor="product-name">
+                          Nome do produto *
+                        </label>
                         <input
-                          type="checkbox"
-                          checked={selectedProduct.is_featured}
+                          id="product-name"
+                          type="text"
+                          placeholder="Ex: iPhone 17 Pro Max"
+                          value={productForm.name}
                           onChange={(event) =>
-                            handleCampaignChange(
-                              "is_featured",
-                              event.target.checked
-                            )
+                            handleProductNameChange(event.target.value)
                           }
+                          maxLength={160}
+                          required
                         />
-
-                        <span className="custom-checkbox">
-                          <CheckCircle size={13} />
-                        </span>
-
-                        <span>
-                          <strong>Produto em destaque</strong>
-                          <small>
-                            Destacar este produto na loja.
-                          </small>
-                        </span>
-                      </label>
+                      </div>
 
                       <div className="form-field">
-                        <label htmlFor="campaign">
-                          Campanha do produto
+                        <label htmlFor="product-category">
+                          Categoria
                         </label>
                         <select
-                          id="campaign"
-                          value={selectedProduct.campaign_type || ""}
+                          id="product-category"
+                          value={productForm.category_id}
                           onChange={(event) =>
-                            handleCampaignChange(
-                              "campaign_type",
-                              (event.target.value || null) as CampaignType
+                            handleProductFormChange(
+                              "category_id",
+                              event.target.value
                             )
                           }
                         >
-                          <option value="">Nenhuma campanha</option>
-                          <option value="promotion">Promoção</option>
-                          <option value="black_friday">Black Friday</option>
+                          <option value="">Sem categoria</option>
+                          {categories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
                       <div className="form-field">
-                        <label htmlFor="badge">
-                          Etiqueta personalizada
+                        <label htmlFor="product-brand">Marca</label>
+                        <input
+                          id="product-brand"
+                          type="text"
+                          placeholder="Ex: Apple"
+                          value={productForm.brand}
+                          onChange={(event) =>
+                            handleProductFormChange(
+                              "brand",
+                              event.target.value
+                            )
+                          }
+                          maxLength={100}
+                        />
+                      </div>
+
+                      <div className="form-field">
+                        <label htmlFor="product-model">Modelo</label>
+                        <input
+                          id="product-model"
+                          type="text"
+                          placeholder="Ex: A3105"
+                          value={productForm.model}
+                          onChange={(event) =>
+                            handleProductFormChange(
+                              "model",
+                              event.target.value
+                            )
+                          }
+                          maxLength={120}
+                        />
+                      </div>
+
+                      <div className="form-field product-form-full">
+                        <label htmlFor="product-slug">
+                          Slug / endereço do produto *
                         </label>
                         <input
-                          id="badge"
+                          id="product-slug"
                           type="text"
-                          maxLength={40}
-                          placeholder="Ex: MAIS VENDIDO"
-                          value={selectedProduct.badge_label || ""}
+                          placeholder="nome-do-produto"
+                          value={productForm.slug}
                           onChange={(event) =>
-                            handleCampaignChange(
-                              "badge_label",
+                            handleProductSlugChange(event.target.value)
+                          }
+                          maxLength={180}
+                          required
+                        />
+                        <small>
+                          Gerado automaticamente pelo nome. Você também pode
+                          personalizar; não pode se repetir.
+                        </small>
+                      </div>
+
+                      <div className="form-field product-form-full">
+                        <label htmlFor="product-short-description">
+                          Descrição curta
+                        </label>
+                        <textarea
+                          id="product-short-description"
+                          rows={2}
+                          maxLength={300}
+                          placeholder="Resumo do produto para a vitrine."
+                          value={productForm.short_description}
+                          onChange={(event) =>
+                            handleProductFormChange(
+                              "short_description",
                               event.target.value
                             )
                           }
                         />
-                        <small>Limite de 40 caracteres.</small>
                       </div>
 
-                      <button
-                        className="primary-button full-button"
-                        onClick={handleSaveCampaign}
-                        disabled={saving}
-                      >
-                        <Save size={16} />
-                        Salvar personalização
-                      </button>
-                    </div>
-                  </article>
-
-                  <article className="admin-panel">
-                    <div className="panel-heading">
-                      <div className="panel-icon">
-                        <ImagePlus size={19} />
-                      </div>
-                      <div>
-                        <h3>Imagens do produto</h3>
-                        <p>Gerencie as imagens da vitrine.</p>
-                      </div>
-                    </div>
-
-                    <div className="panel-content">
-                      <label
-                        className={`upload-area ${
-                          uploading ? "uploading" : ""
-                        }`}
-                      >
-                        <div className="upload-icon">
-                          <Upload size={23} />
-                        </div>
-
-                        <strong>
-                          {uploading
-                            ? "Enviando imagem..."
-                            : "Adicionar imagem"}
-                        </strong>
-
-                        <span>
-                          Selecione uma imagem do seu dispositivo.
-                        </span>
-                        <small>JPG, PNG ou WEBP · Máximo 5 MB</small>
-
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp"
-                          onChange={handleUploadImage}
-                          disabled={uploading}
-                          hidden
+                      <div className="form-field product-form-full">
+                        <label htmlFor="product-description">
+                          Descrição completa
+                        </label>
+                        <textarea
+                          id="product-description"
+                          rows={5}
+                          placeholder="Informações detalhadas sobre o produto."
+                          value={productForm.description}
+                          onChange={(event) =>
+                            handleProductFormChange(
+                              "description",
+                              event.target.value
+                            )
+                          }
                         />
-                      </label>
-
-                      <div className="image-grid">
-                        {images.map((image) => (
-                          <div
-                            key={image.id}
-                            className={`image-card ${
-                              image.is_primary ? "primary-image" : ""
-                            }`}
-                          >
-                            <div className="image-preview">
-                              <img
-                                src={image.storage_path}
-                                alt={
-                                  image.alt_text || selectedProduct.name
-                                }
-                              />
-
-                              {image.is_primary && (
-                                <span className="primary-image-label">
-                                  <Star size={12} />
-                                  Principal
-                                </span>
-                              )}
-                            </div>
-
-                            {!image.is_primary && (
-                              <button
-                                className="image-action"
-                                onClick={() => handleSetPrimary(image)}
-                                disabled={saving}
-                              >
-                                Definir como principal
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-
-                      {images.length === 0 && (
-                        <div className="inline-empty">
-                          Nenhuma imagem cadastrada.
-                        </div>
-                      )}
-                    </div>
-                  </article>
-                </div>
-
-                <div className="management-side">
-                  <article className="admin-panel">
-                    <div className="panel-heading">
-                      <div className="panel-icon">
-                        <Layers size={19} />
-                      </div>
-                      <div>
-                        <h3>Variantes cadastradas</h3>
-                        <p>Capacidades, cores e preços.</p>
                       </div>
                     </div>
 
-                    <div className="panel-content">
-                      <div className="variant-list">
-                        {variants.map((variant) => (
-                          <div className="variant-card" key={variant.id}>
-                            <div className="variant-top">
-                              <div>
-                                <strong>
-                                  {variant.color || "Padrão"}
-                                </strong>
-                                <span>
-                                  {variant.storage_gb
-                                    ? `${variant.storage_gb} GB`
-                                    : "Capacidade não definida"}
-                                </span>
-                              </div>
+                    <div className="product-form-footer">
+                      <span>
+                        {editingProductId
+                          ? "O status atual do produto será preservado."
+                          : "O produto será criado como rascunho e não aparecerá na loja até ser publicado."}
+                      </span>
 
-                              <span
-                                className={`variant-status ${
-                                  variant.is_active
-                                    ? "active"
-                                    : "inactive"
-                                }`}
-                              >
-                                {variant.is_active ? "Ativa" : "Inativa"}
-                              </span>
-                            </div>
-
-                            <div className="variant-price">
-                              {formatPrice(variant.price_cents)}
-                            </div>
-
-                            <small className="variant-sku">
-                              SKU: {variant.sku}
-                            </small>
-
-                            <div className="variant-actions">
-                              <button
-                                className="secondary-button"
-                                onClick={() => handleToggleVariant(variant)}
-                                disabled={saving}
-                              >
-                                {variant.is_active
-                                  ? "Desativar"
-                                  : "Ativar"}
-                              </button>
-
-                              <button
-                                className="danger-button"
-                                onClick={() => handleDeleteVariant(variant)}
-                                disabled={saving}
-                                title="Excluir variante"
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {variants.length === 0 && (
-                        <div className="inline-empty">
-                          Nenhuma variante cadastrada.
-                        </div>
-                      )}
-                    </div>
-                  </article>
-
-                  <article className="admin-panel">
-                    <div className="panel-heading">
-                      <div className="panel-icon">
-                        <CircleDollarSign size={19} />
-                      </div>
-                      <div>
-                        <h3>Adicionar variante</h3>
-                        <p>Cadastre uma nova opção de produto.</p>
-                      </div>
-                    </div>
-
-                    <div className="panel-content">
-                      <form
-                        onSubmit={handleAddVariant}
-                        className="variant-form"
-                      >
-                        <div className="form-field">
-                          <label htmlFor="sku">SKU</label>
-                          <input
-                            id="sku"
-                            type="text"
-                            placeholder="Código do produto"
-                            value={sku}
-                            onChange={(event) => setSku(event.target.value)}
-                            required
-                          />
-                        </div>
-
-                        <div className="form-field">
-                          <label htmlFor="color">Cor</label>
-                          <input
-                            id="color"
-                            type="text"
-                            placeholder="Ex: Titânio natural"
-                            value={color}
-                            onChange={(event) => setColor(event.target.value)}
-                          />
-                        </div>
-
-                        <div className="form-field">
-                          <label htmlFor="storage">Capacidade</label>
-                          <select
-                            id="storage"
-                            value={storage}
-                            onChange={(event) => setStorage(event.target.value)}
-                            required
-                          >
-                            <option value="64">64 GB</option>
-                            <option value="128">128 GB</option>
-                            <option value="256">256 GB</option>
-                            <option value="512">512 GB</option>
-                            <option value="1024">1 TB</option>
-                            <option value="2048">2 TB</option>
-                          </select>
-                        </div>
-
-                        <div className="form-field">
-                          <label htmlFor="price">Preço em reais</label>
-                          <div className="price-input">
-                            <span>R$</span>
-                            <input
-                              id="price"
-                              type="text"
-                              inputMode="decimal"
-                              placeholder="5499.00"
-                              value={priceReais}
-                              onChange={(event) =>
-                                setPriceReais(event.target.value)
-                              }
-                              required
-                            />
-                          </div>
-                        </div>
+                      <div className="product-form-actions">
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={closeProductForm}
+                          disabled={saving}
+                        >
+                          Cancelar
+                        </button>
 
                         <button
                           type="submit"
-                          className="primary-button full-button"
+                          className="primary-button"
                           disabled={saving}
                         >
-                          <Plus size={17} />
-                          Salvar variante e preço
+                          <Save size={16} />
+                          {saving
+                            ? "Salvando..."
+                            : editingProductId
+                              ? "Salvar alterações"
+                              : "Cadastrar produto"}
                         </button>
-                      </form>
+                      </div>
                     </div>
-                  </article>
+                  </form>
                 </div>
+              )}
+
+              <div className="catalog-toolbar">
+                <div className="search-box">
+                  <Search size={17} />
+                  <input
+                    type="search"
+                    placeholder="Buscar por nome, marca, modelo ou categoria..."
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                  />
+                </div>
+
+                <span className="catalog-counter">
+                  {filteredProducts.length} de {products.length} produtos
+                </span>
               </div>
 
-              <div className="publication-panel">
-                <div className="publication-info">
-                  <div className="publication-icon">
-                    {selectedProduct.status === "published" ? (
-                      <Eye size={21} />
+              <div className="catalog-table-wrapper">
+                <table className="catalog-table">
+                  <thead>
+                    <tr>
+                      <th>Produto</th>
+                      <th>Categoria</th>
+                      <th>Status</th>
+                      <th>Campanha</th>
+                      <th className="table-action-heading">Ações</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {filteredProducts.map((product) => {
+                      const category = categories.find(
+                        (item) => item.id === product.category_id
+                      );
+
+                      return (
+                        <tr key={product.id}>
+                          <td>
+                            <div className="product-name-cell">
+                              <div className="product-avatar">
+                                <Smartphone size={20} />
+                              </div>
+
+                              <div>
+                                <strong>{product.name}</strong>
+                                <span>{product.slug}</span>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td>
+                            <span className="category-label">
+                              {category?.name || "Sem categoria"}
+                            </span>
+                          </td>
+
+                          <td>
+                            <span
+                              className={`status-badge ${getStatusClass(
+                                product.status
+                              )}`}
+                            >
+                              <span />
+                              {getStatusLabel(product.status)}
+                            </span>
+                          </td>
+
+                          <td>
+                            <div className="campaign-cell">
+                              {product.is_featured && (
+                                <span className="mini-tag featured">
+                                  <Star size={12} /> Destaque
+                                </span>
+                              )}
+
+                              {product.campaign_type === "promotion" && (
+                                <span className="mini-tag promotion">
+                                  Promoção
+                                </span>
+                              )}
+
+                              {product.campaign_type === "black_friday" && (
+                                <span className="mini-tag black">
+                                  Black Friday
+                                </span>
+                              )}
+
+                              {product.badge_label && (
+                                <span className="mini-tag custom">
+                                  {product.badge_label}
+                                </span>
+                              )}
+
+                              {!product.is_featured &&
+                                !product.campaign_type &&
+                                !product.badge_label && (
+                                  <span className="empty-campaign">
+                                    Sem campanha
+                                  </span>
+                                )}
+                            </div>
+                          </td>
+
+                          <td className="table-action-cell">
+                            <div className="product-row-actions">
+                              <button
+                                className="edit-button"
+                                onClick={() =>
+                                  openEditProductForm(product)
+                                }
+                                title="Editar dados do produto"
+                              >
+                                <Pencil size={14} />
+                                Editar
+                              </button>
+
+                              <button
+                                className="manage-button"
+                                onClick={() => handleOpenVariants(product)}
+                              >
+                                Gerenciar
+                                <ChevronRight size={15} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {filteredProducts.length === 0 && (
+                      <tr>
+                        <td colSpan={5}>
+                          <div className="empty-state">
+                            <Package size={30} />
+                            <strong>
+                              {loading
+                                ? "Carregando catálogo..."
+                                : "Nenhum produto encontrado"}
+                            </strong>
+                            <span>
+                              {searchTerm
+                                ? "Tente pesquisar por outro nome, marca ou categoria."
+                                : "Cadastre seu primeiro produto para começar."}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {activeView === "produto" && (
+            <>
+              {selectedProduct && (
+                <section
+                  className="management-section"
+                  id="gerenciamento"
+                >
+                  <div className="management-heading">
+                    <div>
+                      <span className="eyebrow">
+                        GERENCIAMENTO INDIVIDUAL
+                      </span>
+                      <h2>{selectedProduct.name}</h2>
+                      <p>
+                        Configurações, imagens, variantes e publicação.
+                      </p>
+                    </div>
+
+                    <button
+                      className="icon-button close-button"
+                      onClick={closeProduct}
+                      aria-label="Fechar gerenciamento"
+                      title="Fechar"
+                    >
+                      <X size={19} />
+                    </button>
+                  </div>
+
+                  <div className="management-grid">
+                    <div className="management-main">
+                      <article className="admin-panel">
+                        <div className="panel-heading">
+                          <div className="panel-icon">
+                            <Tag size={19} />
+                          </div>
+                          <div>
+                            <h3>Personalização e campanhas</h3>
+                            <p>Configure a apresentação comercial.</p>
+                          </div>
+                        </div>
+
+                        <div className="panel-content">
+                          <label className="toggle-field">
+                            <input
+                              type="checkbox"
+                              checked={selectedProduct.is_featured}
+                              onChange={(event) =>
+                                handleCampaignChange(
+                                  "is_featured",
+                                  event.target.checked
+                                )
+                              }
+                            />
+
+                            <span className="custom-checkbox">
+                              <CheckCircle size={13} />
+                            </span>
+
+                            <span>
+                              <strong>Produto em destaque</strong>
+                              <small>
+                                Destacar este produto na loja.
+                              </small>
+                            </span>
+                          </label>
+
+                          <div className="form-field">
+                            <label htmlFor="campaign">
+                              Campanha do produto
+                            </label>
+                            <select
+                              id="campaign"
+                              value={selectedProduct.campaign_type || ""}
+                              onChange={(event) =>
+                                handleCampaignChange(
+                                  "campaign_type",
+                                  (event.target.value || null) as CampaignType
+                                )
+                              }
+                            >
+                              <option value="">Nenhuma campanha</option>
+                              <option value="promotion">Promoção</option>
+                              <option value="black_friday">
+                                Black Friday
+                              </option>
+                            </select>
+                          </div>
+
+                          <div className="form-field">
+                            <label htmlFor="badge">
+                              Etiqueta personalizada
+                            </label>
+                            <input
+                              id="badge"
+                              type="text"
+                              maxLength={40}
+                              placeholder="Ex: MAIS VENDIDO"
+                              value={selectedProduct.badge_label || ""}
+                              onChange={(event) =>
+                                handleCampaignChange(
+                                  "badge_label",
+                                  event.target.value
+                                )
+                              }
+                            />
+                            <small>Limite de 40 caracteres.</small>
+                          </div>
+
+                          <button
+                            className="primary-button full-button"
+                            onClick={handleSaveCampaign}
+                            disabled={saving}
+                          >
+                            <Save size={16} />
+                            Salvar personalização
+                          </button>
+                        </div>
+                      </article>
+
+                      <article className="admin-panel">
+                        <div className="panel-heading">
+                          <div className="panel-icon">
+                            <ImagePlus size={19} />
+                          </div>
+                          <div>
+                            <h3>Imagens do produto</h3>
+                            <p>Gerencie as imagens da vitrine.</p>
+                          </div>
+                        </div>
+
+                        <div className="panel-content">
+                          <label
+                            className={`upload-area ${
+                              uploading ? "uploading" : ""
+                            }`}
+                          >
+                            <div className="upload-icon">
+                              <Upload size={23} />
+                            </div>
+
+                            <strong>
+                              {uploading
+                                ? "Enviando imagem..."
+                                : "Adicionar imagem"}
+                            </strong>
+
+                            <span>
+                              Selecione uma imagem do seu dispositivo.
+                            </span>
+                            <small>JPG, PNG ou WEBP · Máximo 5 MB</small>
+
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              onChange={handleUploadImage}
+                              disabled={uploading}
+                              hidden
+                            />
+                          </label>
+
+                          <div className="image-grid">
+                            {images.map((image) => (
+                              <div
+                                key={image.id}
+                                className={`image-card ${
+                                  image.is_primary ? "primary-image" : ""
+                                }`}
+                              >
+                                <div className="image-preview">
+                                  <img
+                                    src={image.storage_path}
+                                    alt={
+                                      image.alt_text || selectedProduct.name
+                                    }
+                                  />
+
+                                  {image.is_primary && (
+                                    <span className="primary-image-label">
+                                      <Star size={12} />
+                                      Principal
+                                    </span>
+                                  )}
+                                </div>
+
+                                {!image.is_primary && (
+                                  <button
+                                    className="image-action"
+                                    onClick={() => handleSetPrimary(image)}
+                                    disabled={saving}
+                                  >
+                                    Definir como principal
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          {images.length === 0 && (
+                            <div className="inline-empty">
+                              Nenhuma imagem cadastrada.
+                            </div>
+                          )}
+                        </div>
+                      </article>
+                    </div>
+
+                    <div className="management-side">
+                      <article className="admin-panel">
+                        <div className="panel-heading">
+                          <div className="panel-icon">
+                            <Layers size={19} />
+                          </div>
+                          <div>
+                            <h3>Variantes cadastradas</h3>
+                            <p>Capacidades, cores e preços.</p>
+                          </div>
+                        </div>
+
+                        <div className="panel-content">
+                          <div className="variant-list">
+                            {variants.map((variant) => (
+                              <div
+                                className="variant-card"
+                                key={variant.id}
+                              >
+                                <div className="variant-top">
+                                  <div>
+                                    <strong>
+                                      {variant.color || "Padrão"}
+                                    </strong>
+                                    <span>
+                                      {variant.storage_gb
+                                        ? `${variant.storage_gb} GB`
+                                        : "Capacidade não definida"}
+                                    </span>
+                                  </div>
+
+                                  <span
+                                    className={`variant-status ${
+                                      variant.is_active
+                                        ? "active"
+                                        : "inactive"
+                                    }`}
+                                  >
+                                    {variant.is_active ? "Ativa" : "Inativa"}
+                                  </span>
+                                </div>
+
+                                <div className="variant-price">
+                                  {formatPrice(variant.price_cents)}
+                                </div>
+
+                                <small className="variant-sku">
+                                  SKU: {variant.sku}
+                                </small>
+
+                                <div className="variant-actions">
+                                  <button
+                                    className="secondary-button"
+                                    onClick={() =>
+                                      handleToggleVariant(variant)
+                                    }
+                                    disabled={saving}
+                                  >
+                                    {variant.is_active
+                                      ? "Desativar"
+                                      : "Ativar"}
+                                  </button>
+
+                                  <button
+                                    className="danger-button"
+                                    onClick={() =>
+                                      handleDeleteVariant(variant)
+                                    }
+                                    disabled={saving}
+                                    title="Excluir variante"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {variants.length === 0 && (
+                            <div className="inline-empty">
+                              Nenhuma variante cadastrada.
+                            </div>
+                          )}
+                        </div>
+                      </article>
+
+                      <article className="admin-panel">
+                        <div className="panel-heading">
+                          <div className="panel-icon">
+                            <CircleDollarSign size={19} />
+                          </div>
+                          <div>
+                            <h3>Adicionar variante</h3>
+                            <p>Cadastre uma nova opção de produto.</p>
+                          </div>
+                        </div>
+
+                        <div className="panel-content">
+                          <form
+                            onSubmit={handleAddVariant}
+                            className="variant-form"
+                          >
+                            <div className="form-field">
+                              <label htmlFor="sku">SKU</label>
+                              <input
+                                id="sku"
+                                type="text"
+                                placeholder="Código do produto"
+                                value={sku}
+                                onChange={(event) =>
+                                  setSku(event.target.value)
+                                }
+                                required
+                              />
+                            </div>
+
+                            <div className="form-field">
+                              <label htmlFor="color">Cor</label>
+                              <input
+                                id="color"
+                                type="text"
+                                placeholder="Ex: Titânio natural"
+                                value={color}
+                                onChange={(event) =>
+                                  setColor(event.target.value)
+                                }
+                              />
+                            </div>
+
+                            <div className="form-field">
+                              <label htmlFor="storage">Capacidade</label>
+                              <select
+                                id="storage"
+                                value={storage}
+                                onChange={(event) =>
+                                  setStorage(event.target.value)
+                                }
+                                required
+                              >
+                                <option value="64">64 GB</option>
+                                <option value="128">128 GB</option>
+                                <option value="256">256 GB</option>
+                                <option value="512">512 GB</option>
+                                <option value="1024">1 TB</option>
+                                <option value="2048">2 TB</option>
+                              </select>
+                            </div>
+
+                            <div className="form-field">
+                              <label htmlFor="price">Preço em reais</label>
+                              <div className="price-input">
+                                <span>R$</span>
+                                <input
+                                  id="price"
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="5499.00"
+                                  value={priceReais}
+                                  onChange={(event) =>
+                                    setPriceReais(event.target.value)
+                                  }
+                                  required
+                                />
+                              </div>
+                            </div>
+
+                            <button
+                              type="submit"
+                              className="primary-button full-button"
+                              disabled={saving}
+                            >
+                              <Plus size={17} />
+                              Salvar variante e preço
+                            </button>
+                          </form>
+                        </div>
+                      </article>
+                    </div>
+                  </div>
+
+                  <div className="publication-panel">
+                    <div className="publication-info">
+                      <div className="publication-icon">
+                        {selectedProduct.status === "published" ? (
+                          <Eye size={21} />
+                        ) : (
+                          <ExternalLink size={21} />
+                        )}
+                      </div>
+
+                      <div>
+                        <strong>
+                          {selectedProduct.status === "published"
+                            ? "Produto publicado"
+                            : "Pronto para publicar?"}
+                        </strong>
+
+                        <span>
+                          {selectedProduct.status === "published"
+                            ? "Este produto já está publicado na loja."
+                            : "Confira as imagens e variantes antes de disponibilizar na loja."}
+                        </span>
+                      </div>
+                    </div>
+
+                    {selectedProduct.status !== "published" ? (
+                      <button
+                        className="publish-button"
+                        onClick={handlePublishProduct}
+                        disabled={saving}
+                      >
+                        <CheckCircle size={17} />
+                        Publicar produto
+                      </button>
                     ) : (
-                      <ExternalLink size={21} />
+                      <span className="published-confirmation">
+                        <CheckCircle size={17} />
+                        Publicado
+                      </span>
                     )}
                   </div>
+                </section>
+              )}
 
-                  <div>
-                    <strong>
-                      {selectedProduct.status === "published"
-                        ? "Produto publicado"
-                        : "Pronto para publicar?"}
-                    </strong>
-
+              {!selectedProduct && (
+                <section className="catalog-section" id="gerenciamento">
+                  <div className="empty-state">
+                    <Package size={30} />
+                    <strong>Nenhum produto selecionado</strong>
                     <span>
-                      {selectedProduct.status === "published"
-                        ? "Este produto já está publicado na loja."
-                        : "Confira as imagens e variantes antes de disponibilizar na loja."}
+                      Escolha um produto no catálogo para gerenciar imagens,
+                      variantes e publicação.
                     </span>
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={() => setActiveView("catalogo")}
+                    >
+                      Ir para o catálogo
+                    </button>
                   </div>
-                </div>
-
-                {selectedProduct.status !== "published" ? (
-                  <button
-                    className="publish-button"
-                    onClick={handlePublishProduct}
-                    disabled={saving}
-                  >
-                    <CheckCircle size={17} />
-                    Publicar produto
-                  </button>
-                ) : (
-                  <span className="published-confirmation">
-                    <CheckCircle size={17} />
-                    Publicado
-                  </span>
-                )}
-              </div>
-            </section>
+                </section>
+              )}
+            </>
           )}
 
-          {!selectedProduct && (
-            <section className="catalog-section" id="gerenciamento">
-              <div className="empty-state">
-                <Package size={30} />
-                <strong>Nenhum produto selecionado</strong>
-                <span>
-                  Escolha um produto no catálogo para gerenciar imagens,
-                  variantes e publicação.
-                </span>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => setActiveView("catalogo")}
-                >
-                  Ir para o catálogo
-                </button>
-              </div>
-            </section>
-          )}
-          </>
-          )}
-
-          {activeView === "gateway" && (
-            <section className="gateway-section" id="gateway">
-              <div className="section-heading">
-                <div>
-                  <span className="eyebrow">PAGAMENTOS</span>
-                  <h2>Gateway</h2>
-                  <p>
-                    Configuração e acompanhamento do gateway de pagamento da
-                    loja.
-                  </p>
-                </div>
-              </div>
-
-              <div className="gateway-notice">
-                <div className="panel-icon">
-                  <CreditCard size={19} />
-                </div>
-                <div>
-                  <strong>Módulo em desenvolvimento</strong>
-                  <span>
-                    Esta área está reservada para a integração do gateway de
-                    pagamento.
-                  </span>
-                </div>
-              </div>
-
-              <div className="gateway-grid">
-                <article className="gateway-card">
-                  <span className="gateway-tag">Em breve</span>
-                  <h3>Provedor</h3>
-                  <p>Gateway ativo e modo de operação.</p>
-                </article>
-
-                <article className="gateway-card">
-                  <span className="gateway-tag">Em breve</span>
-                  <h3>Webhook</h3>
-                  <p>Status das notificações de pagamento.</p>
-                </article>
-
-                <article className="gateway-card">
-                  <span className="gateway-tag">Em breve</span>
-                  <h3>Transações</h3>
-                  <p>Pedidos e pagamentos recebidos.</p>
-                </article>
-              </div>
-
-              <p className="gateway-footnote">
-                Chaves e segredos não ficam no painel: permanecem em variáveis
-                de ambiente no servidor.
-              </p>
-            </section>
-          )}
+          {activeView === "gateway" && <GatewaySettings />}
 
           <footer className="admin-footer">
             <span>ILUME CENTRAL</span>
