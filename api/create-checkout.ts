@@ -300,10 +300,10 @@ function returnBravoPayment(
       method: "PIX",
       status: transaction.status || "PENDING",
       amountCents: totalCents,
-      copyPaste: transaction.pix.copy_paste,
-      qrCode: transaction.pix.qr_code || null,
-      qrCodeBase64: transaction.pix.qr_code_base64 || null,
-      expiresAt: transaction.pix.expires_at || null
+      copyPaste: transaction.pix?.copy_paste || "",
+      qrCode: transaction.pix?.qr_code || null,
+      qrCodeBase64: transaction.pix?.qr_code_base64 || null,
+      expiresAt: transaction.pix?.expires_at || null
     }
   });
 }
@@ -1170,8 +1170,13 @@ export default async function handler(req: any, res: any) {
           )
       );
 
-      if (!saved || typeof existingTransaction?.pix?.copy_paste !== "string" ||
-          !existingTransaction.pix.copy_paste.length) {
+      const hasCopyPaste =
+        typeof existingTransaction?.pix?.copy_paste === "string" &&
+        existingTransaction.pix.copy_paste.length > 0;
+      const transactionIsPaid =
+        String(existingTransaction.status || "").toUpperCase() === "PAID";
+
+      if (!saved || (!hasCopyPaste && !transactionIsPaid)) {
         return pendingPayment(
           res,
           order.id,
