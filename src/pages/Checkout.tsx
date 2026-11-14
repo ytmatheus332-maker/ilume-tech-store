@@ -395,7 +395,34 @@ export default function Checkout() {
     }
   }
 
-  const isPixPaid = pixPayment?.status.toUpperCase() === "PAID";
+  const pixStatus = (pixPayment?.status || "PENDING").toUpperCase();
+  const isPixPaid = pixStatus === "PAID";
+  const isPixTerminal = ["EXPIRED", "REFUNDED", "CHARGEBACK"].includes(
+    pixStatus
+  );
+  const canPayWithPix = !isPixPaid && !isPixTerminal;
+
+  const pixStatusLabel =
+    pixStatus === "EXPIRED"
+      ? "PIX expirado"
+      : pixStatus === "REFUNDED"
+        ? "Pagamento estornado"
+        : pixStatus === "CHARGEBACK"
+          ? "Pagamento contestado"
+          : isPixPaid
+            ? "Pagamento aprovado"
+            : "Pagamento aguardando confirmação";
+
+  const pixStatusMessage =
+    pixStatus === "EXPIRED"
+      ? "Esta cobrança expirou. Não tente pagar este código PIX."
+      : pixStatus === "REFUNDED"
+        ? "Este pagamento foi estornado."
+        : pixStatus === "CHARGEBACK"
+          ? "Este pagamento está contestado."
+          : isPixPaid
+            ? "Seu pagamento foi confirmado pela BravoPay."
+            : "O pedido ainda não está confirmado.";
 
   if (cart.length === 0 && !pixPayment) {
     return (
@@ -428,31 +455,33 @@ export default function Checkout() {
               ILUME TECH STORE
             </span>
 
-            <h1>{isPixPaid ? "Pagamento aprovado" : "Finalize seu pagamento"}</h1>
+            <h1>
+              {isPixPaid
+                ? "Pagamento aprovado"
+                : isPixTerminal
+                  ? "Pagamento indisponível"
+                  : "Finalize seu pagamento"}
+            </h1>
 
             <p className="checkout-pix-description">
               {isPixPaid
                 ? "O pagamento deste pedido foi confirmado."
-                : "Seu pedido foi registrado. Escaneie o QR Code ou copie o código PIX para realizar o pagamento."}
+                : isPixTerminal
+                  ? pixStatusMessage
+                  : "Seu pedido foi registrado. Escaneie o QR Code ou copie o código PIX para realizar o pagamento."}
             </p>
 
             <div className="checkout-pix-status">
               {isPixPaid ? (
                 <CheckCircle2 size={18} />
+              ) : isPixTerminal ? (
+                <AlertCircle size={18} />
               ) : (
                 <Clock3 size={18} />
               )}
               <div>
-                <strong>
-                  {isPixPaid
-                    ? "Pagamento aprovado"
-                    : "Pagamento aguardando confirmação"}
-                </strong>
-                <p>
-                  {isPixPaid
-                    ? "Seu pagamento foi confirmado pela BravoPay."
-                    : "O pedido ainda não está confirmado."}
-                </p>
+                <strong>{pixStatusLabel}</strong>
+                <p>{pixStatusMessage}</p>
               </div>
             </div>
 
@@ -461,7 +490,7 @@ export default function Checkout() {
               <strong>{pixPayment.orderId}</strong>
             </div>
 
-            {!isPixPaid && (
+            {canPayWithPix && (
               <div className="checkout-pix-qr">
               {qrCodeImage ? (
                 <img
@@ -535,8 +564,11 @@ export default function Checkout() {
             )}
 
             <p className="checkout-pix-disclaimer">
-              Após pagar, aguarde a confirmação do pagamento. Não realize
-              outro pagamento para este pedido.
+              {isPixPaid
+                ? "Pagamento confirmado. Não realize outro pagamento para este pedido."
+                : isPixTerminal
+                  ? "Não realize outro pagamento usando esta cobrança."
+                  : "Após pagar, aguarde a confirmação do pagamento. Não realize outro pagamento para este pedido."}
             </p>
 
             <Link to="/" className="checkout-confirmation-button">
