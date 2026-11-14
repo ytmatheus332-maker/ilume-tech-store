@@ -256,13 +256,24 @@ export default function Checkout() {
   }, []);
 
   useEffect(() => {
-    if (!recoveryRequestId || pixPayment) return;
+    const currentPixStatus = String(pixPayment?.status || "").toUpperCase();
+    const isCurrentPaymentPending =
+      !pixPayment || currentPixStatus === "PENDING";
+
+    if (!recoveryRequestId || !isCurrentPaymentPending) return;
 
     const requestId = recoveryRequestId;
     let active = true;
     let timer: number | null = null;
     let pollCount = 0;
-    const intervals = [0, 2000, 4000, 8000, 15000];
+    const intervals = [2000, 4000, 8000, 15000];
+
+    function scheduleNextPoll() {
+      if (!active) return;
+      const delay = intervals[Math.min(pollCount, intervals.length - 1)];
+      pollCount += 1;
+      timer = window.setTimeout(pollPaymentStatus, delay);
+    }
 
     setRecoveryPending(true);
 
@@ -308,7 +319,7 @@ export default function Checkout() {
 
           setPixPayment(recoveredPayment);
           setRecoveryPending(false);
-          setRecoveryRequestId(null);
+          if (terminalStatus) setRecoveryRequestId(null);
           setError(null);
 
           if (recoveredPayment.copyPaste) {
@@ -324,17 +335,14 @@ export default function Checkout() {
               if (active) setQrCodeError(true);
             }
           }
+          if (!terminalStatus) scheduleNextPoll();
           return;
         }
       } catch {
         // Falha temporária de consulta: mantém a identidade e tenta novamente.
       }
 
-      if (active) {
-        const delay = intervals[Math.min(pollCount, intervals.length - 1)];
-        pollCount += 1;
-        timer = window.setTimeout(pollPaymentStatus, delay || 15000);
-      }
+      scheduleNextPoll();
     }
 
     pollPaymentStatus();
@@ -343,7 +351,7 @@ export default function Checkout() {
       active = false;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [recoveryRequestId, pixPayment]);
+  }, [recoveryRequestId, pixPayment?.status]);
 
   async function handleFinishCheckout(
     event: FormEvent<HTMLFormElement>
@@ -469,7 +477,9 @@ export default function Checkout() {
         };
 
         setPixPayment(payment);
-        setRecoveryRequestId(null);
+        setRecoveryRequestId(
+          payment.status === "PENDING" ? checkoutRequestId : null
+        );
         setRecoveryPending(false);
 
         if (payment.copyPaste) {
