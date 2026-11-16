@@ -9,6 +9,7 @@ import {
 
 import { supabase } from "../../lib/supabase";
 import GatewaySettings from "../../components/admin/GatewaySettings";
+import ShipmentManager from "../../components/admin/ShipmentManager";
 import "./AdminDashboard.css";
 
 import {
@@ -1185,6 +1186,8 @@ export default function AdminDashboard() {
                           <p><small>O status é atualizado pelo fluxo de pagamento e pelos webhooks. Esta tela não permite alterá-lo manualmente.</small></p>
                         </div>
                       </article>
+
+                      <ShipmentManager orderId={selectedOrder.id} orderStatus={selectedOrder.status} />
                     </div>
                   </div>
                 </div>
