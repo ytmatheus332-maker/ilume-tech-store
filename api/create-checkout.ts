@@ -4,8 +4,6 @@ import { createClient } from "@supabase/supabase-js";
 const BRAVOPAY_URL = "https://bravopay.club/api/v1";
 const DEFAULT_STORE_URL = "https://ilume-tech-store.vercel.app";
 
-// A função terá até 30 segundos na configuração da Vercel.
-// Os timeouts individuais deixam margem para finalizar a resposta.
 const SUPABASE_TIMEOUT_MS = 3000;
 const BRAVO_LOOKUP_TIMEOUT_MS = 3000;
 const BRAVO_CREATE_TIMEOUT_MS = 15000;
@@ -28,8 +26,33 @@ interface ValidatedItem {
   title: string;
 }
 
+interface CheckoutAddress {
+  recipientName: string;
+  recipientPhone: string;
+  postalCode: string;
+  street: string;
+  number: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  reference: string;
+  country: string;
+}
+
+const BRAZILIAN_STATES = new Set([
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF",
+  "ES", "GO", "MA", "MT", "MS", "MG", "PA",
+  "PB", "PR", "PE", "PI", "RJ", "RN", "RS",
+  "RO", "RR", "SC", "SP", "SE", "TO"
+]);
+
 function normalizeDigits(value: unknown): string {
   return String(value || "").replace(/\D/g, "");
+}
+
+function normalizeAddressText(value: unknown): string {
+  return String(value || "").trim().replace(/\s+/g, " ");
 }
 
 function isValidUUID(value: unknown): value is string {
@@ -91,6 +114,157 @@ function isValidCPF(value: string): boolean {
     calculateDigit(cpf.slice(0, 9), 10) === Number(cpf[9]) &&
     calculateDigit(cpf.slice(0, 10), 11) === Number(cpf[10])
   );
+}
+
+function validateCheckoutAddress(value: any): CheckoutAddress | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const address: CheckoutAddress = {
+    recipientName: normalizeAddressText(value.recipientName),
+    recipientPhone: normalizeDigits(value.recipientPhone),
+    postalCode: normalizeDigits(value.postalCode),
+    street: normalizeAddressText(value.street),
+    number: normalizeAddressText(value.number),
+    complement: normalizeAddressText(value.complement),
+    neighborhood: normalizeAddressText(value.neighborhood),
+    city: normalizeAddressText(value.city),
+    state: normalizeAddressText(value.state).toUpperCase(),
+    reference: normalizeAddressText(value.reference),
+    country: "Brasil"
+  };
+
+  if (
+    address.recipientName.length < 3 ||
+    address.recipientName.length > 150 ||
+    address.recipientPhone.length < 10 ||
+    address.recipientPhone.length > 13 ||
+    address.postalCode.length !== 8 ||
+    address.street.length < 2 ||
+    address.street.length > 200 ||
+    address.number.length < 1 ||
+    address.number.length > 30 ||
+    address.complement.length > 100 ||
+    address.neighborhood.length < 2 ||
+    address.neighborhood.length > 100 ||
+    address.city.length < 2 ||
+    address.city.length > 100 ||
+    !BRAZILIAN_STATES.has(address.state) ||
+    address.reference.length > 200
+  ) {
+    return null;
+  }
+
+  return address;
+}
+
+function sameAddress(existing: any, expected: CheckoutAddress): boolean {
+  return (
+    normalizeAddressText(existing.recipient_name) === expected.recipientName &&
+    normalizeDigits(existing.recipient_phone) === expected.recipientPhone &&
+    normalizeDigits(existing.postal_code) === expected.postalCode &&
+    normalizeAddressText(existing.street) === expected.street &&
+    normalizeAddressText(existing.number) === expected.number &&
+    normalizeAddressText(existing.complement) === expected.complement &&
+    normalizeAddressText(existing.neighborhood) === expected.neighborhood &&
+    normalizeAddressText(existing.city) === expected.city &&
+    normalizeAddressText(existing.state).toUpperCase() === expected.state &&
+    normalizeAddressText(existing.reference) === expected.reference &&
+    normalizeAddressText(existing.country || "Brasil") === expected.country
+  );
+}
+
+async function ensureOrderAddress(
+  supabase: any,
+  orderId: string,
+  address: CheckoutAddress
+): Promise<"saved" | "conflict" | "error"> {
+  const addressColumns = [
+    "recipient_name",
+    "recipient_phone",
+    "postal_code",
+    "street",
+    "number",
+    "complement",
+    "neighborhood",
+    "city",
+    "state",
+    "reference",
+    "country"
+  ].join(", ");
+
+  const { data: existingAddress, error: readError } = await supabase
+    .from("order_addresses")
+    .select(addressColumns)
+    .eq("order_id", orderId)
+    .maybeSingle();
+
+  if (readError) {
+    console.error(
+      "CHECKOUT: Erro ao consultar endereço do pedido.",
+      readError.code || "UNKNOWN"
+    );
+
+    return "error";
+  }
+
+  if (existingAddress) {
+    return sameAddress(existingAddress, address)
+      ? "saved"
+      : "conflict";
+  }
+
+  const { error: insertError } = await supabase
+    .from("order_addresses")
+    .insert({
+      order_id: orderId,
+      recipient_name: address.recipientName,
+      recipient_phone: address.recipientPhone,
+      postal_code: address.postalCode,
+      street: address.street,
+      number: address.number,
+      complement: address.complement || null,
+      neighborhood: address.neighborhood,
+      city: address.city,
+      state: address.state,
+      reference: address.reference || null,
+      country: address.country
+    });
+
+  if (!insertError) {
+    return "saved";
+  }
+
+  if (insertError.code === "23505") {
+    const { data: retryAddress, error: retryError } = await supabase
+      .from("order_addresses")
+      .select(addressColumns)
+      .eq("order_id", orderId)
+      .maybeSingle();
+
+    if (retryError) {
+      console.error(
+        "CHECKOUT: Erro ao confirmar endereço após conflito.",
+        retryError.code || "UNKNOWN"
+      );
+
+      return "error";
+    }
+
+    if (retryAddress) {
+      return sameAddress(retryAddress, address)
+        ? "saved"
+        : "conflict";
+    }
+  }
+
+  console.error(
+    "CHECKOUT: Erro ao salvar endereço.",
+    insertError.code || "UNKNOWN"
+  );
+
+  return "error";
 }
 
 function getProductName(products: unknown): string {
@@ -249,8 +423,6 @@ function getBravoTransactionForOrder(
       typeof data.has_more === "boolean" &&
       data.has_more === false;
   } else if (Array.isArray(data?.transactions)) {
-    // Compatibilidade com o formato legado: pode recuperar uma
-    // transação, mas não confirma ausência sem o envelope oficial.
     transactions = data.transactions;
   } else if (Array.isArray(data)) {
     transactions = data;
@@ -328,6 +500,7 @@ async function syncBravoOrderStatus(
       from: ["pending", "approved", "chargeback"]
     }
   };
+
   const transition = transitions[transactionStatus];
 
   if (!transition) return true;
@@ -412,6 +585,7 @@ function returnStoredBravoOrderStatus(res: any, order: any) {
     refunded: "REFUNDED",
     chargeback: "CHARGEBACK"
   };
+
   const status = knownStatuses[String(order.status || "").toLowerCase()];
 
   if (!status) {
@@ -470,7 +644,6 @@ export default async function handler(req: any, res: any) {
     );
   }
 
-  // Mede cada etapa sem registrar dados pessoais ou respostas completas.
   async function runStep<T>(
     step: string,
     action: () => Promise<T>
@@ -625,6 +798,7 @@ export default async function handler(req: any, res: any) {
             trace("payment_status_bravo_http_error", {
               httpStatus: lookupResponse.status
             });
+
             return returnStoredBravoOrderStatus(res, order);
           }
 
@@ -638,6 +812,7 @@ export default async function handler(req: any, res: any) {
             trace("payment_status_bravo_transaction_not_found", {
               responseUsable: transactionResult.confirmedNoMatch
             });
+
             return returnStoredBravoOrderStatus(res, order);
           }
 
@@ -658,6 +833,7 @@ export default async function handler(req: any, res: any) {
               amountMatches:
                 transactionAmount === Number(order.total_amount_cents)
             });
+
             return returnStoredBravoOrderStatus(res, order);
           }
 
@@ -695,6 +871,7 @@ export default async function handler(req: any, res: any) {
 
           if (transactionStatus === "PENDING" && !copyPaste) {
             trace("payment_status_pix_data_pending");
+
             return pendingPayment(
               res,
               order.id,
@@ -770,6 +947,7 @@ export default async function handler(req: any, res: any) {
 
     const {
       customer,
+      address: rawAddress,
       items,
       checkoutRequestId
     } = req.body || {};
@@ -819,8 +997,16 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    const checkoutAddress = validateCheckoutAddress(rawAddress);
+
+    if (!checkoutAddress) {
+      return res.status(400).json({
+        error: "Preencha corretamente todos os campos obrigatórios do endereço de entrega. Confira também a sigla da UF."
+      });
+    }
+
     // =====================================================
-    // 4. CONSOLIDAR QUANTIDADES
+    // 3. CONSULTAR GATEWAY E VARIANTES EM PARALELO
     // =====================================================
 
     const quantities = new Map<string, number>();
@@ -852,10 +1038,6 @@ export default async function handler(req: any, res: any) {
 
       quantities.set(variantId, accumulated);
     }
-
-    // =====================================================
-    // 3. CONSULTAR GATEWAY E VARIANTES EM PARALELO
-    // =====================================================
 
     const variantIds = Array.from(quantities.keys());
 
@@ -1037,7 +1219,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // =====================================================
-    // 6. CRIAR OU RECUPERAR PEDIDO
+    // 4. CRIAR OU RECUPERAR PEDIDO
     // =====================================================
 
     let order: any = null;
@@ -1111,7 +1293,7 @@ export default async function handler(req: any, res: any) {
     orderId = order.id;
 
     // =====================================================
-    // 7. VALIDAR PROPRIEDADE DA TENTATIVA
+    // 5. VALIDAR PROPRIEDADE DA TENTATIVA
     // =====================================================
 
     const orderGateway = order.gateway as Gateway;
@@ -1142,8 +1324,6 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // Se o gateway foi alterado no painel enquanto existia uma
-    // tentativa pendente, respeitamos o gateway salvo no pedido.
     if (orderGateway === "bravopay") {
       if (
         customerPhone.length < 10 ||
@@ -1177,7 +1357,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // =====================================================
-    // 8. REGISTRAR ITENS DO PEDIDO
+    // 6. REGISTRAR ITENS DO PEDIDO
     // =====================================================
 
     const itemsReady = await runStep(
@@ -1198,6 +1378,67 @@ export default async function handler(req: any, res: any) {
     }
 
     trace("order_items_ready");
+
+    // =====================================================
+    // 7. REGISTRAR E VALIDAR ENDEREÇO DE ENTREGA
+    // =====================================================
+
+    const addressResult = await runStep(
+      "order_address",
+      () =>
+        ensureOrderAddress(
+          supabase,
+          order.id,
+          checkoutAddress
+        )
+    );
+
+    if (addressResult === "conflict") {
+      trace("order_address_conflict");
+
+      return res.status(409).json({
+        error: "Esta tentativa já está vinculada a outro endereço de entrega. Para preservar os dados do pedido, não é possível alterar o endereço nesta tentativa."
+      });
+    }
+
+    if (addressResult !== "saved") {
+      trace("order_address_save_failed");
+
+      return res.status(500).json({
+        error: "Não foi possível salvar o endereço de entrega. Nenhuma cobrança foi iniciada. Tente novamente."
+      });
+    }
+
+    trace("order_address_ready");
+
+    // =====================================================
+    // 8. MODO DE TESTE DA PERSISTÊNCIA DO ENDEREÇO
+    // =====================================================
+
+    const isProductionEnvironment =
+      process.env.VERCEL_ENV === "production" ||
+      process.env.NODE_ENV === "production";
+
+    const addressOnlyTestMode =
+      process.env.CHECKOUT_ADDRESS_TEST_MODE === "true" &&
+      !isProductionEnvironment;
+
+    if (addressOnlyTestMode) {
+      trace("address_test_mode_completed", {
+        gateway: orderGateway,
+        addressSaved: true,
+        gatewayCalled: false
+      });
+
+      return res.status(200).json({
+        success: true,
+        testMode: true,
+        addressSaved: true,
+        gatewayCalled: false,
+        orderId: order.id,
+        message: "Endereço validado e salvo. Nenhuma cobrança foi iniciada."
+      });
+    }
 
     const storeUrl = (
       process.env.STORE_URL || DEFAULT_STORE_URL
@@ -1393,6 +1634,7 @@ export default async function handler(req: any, res: any) {
         trace("bravo_lookup_http_error", {
           httpStatus: lookupResponse.status
         });
+
         return { transaction: null, confirmedNoTransaction: false };
       }
 
@@ -1474,6 +1716,7 @@ export default async function handler(req: any, res: any) {
 
       if (transactionStatus === "PENDING" && !hasCopyPaste) {
         trace("bravo_pix_data_pending", { recovered });
+
         return pendingPayment(
           res,
           order.id,
@@ -1489,7 +1732,6 @@ export default async function handler(req: any, res: any) {
       return returnBravoPayment(res, order.id, transaction, totalCents);
     }
 
-    // Só uma resposta válida que confirme ausência autoriza nova criação.
     if (!newlyCreated) {
       try {
         const lookup = await lookupBravoOrder(order.id);
@@ -1510,12 +1752,13 @@ export default async function handler(req: any, res: any) {
     }
 
     // =====================================================
-    // 12. RETORNAR PIX RECUPERADO
+    // 11. RETORNAR PIX RECUPERADO
     // =====================================================
 
     if (existingTransaction) {
       const transactionStatus =
         getBravoTransactionStatus(existingTransaction);
+
       const hasCopyPaste =
         typeof existingTransaction?.pix?.copy_paste === "string" &&
         existingTransaction.pix.copy_paste.length > 0;
@@ -1592,12 +1835,13 @@ export default async function handler(req: any, res: any) {
     }
 
     // =====================================================
-    // 13. CRIAR PIX NA BRAVOPAY
+    // 12. CRIAR PIX NA BRAVOPAY
     // =====================================================
 
     const remainingMsBeforeCreate =
       CHECKOUT_FUNCTION_TIMEOUT_MS -
       (Date.now() - requestStartedAt);
+
     const requiredMsForCreate =
       BRAVO_CREATE_TIMEOUT_MS +
       BRAVO_LOOKUP_TIMEOUT_MS +
@@ -1665,8 +1909,6 @@ export default async function handler(req: any, res: any) {
         getErrorCode(bravoError) || ""
       );
 
-      // O POST pode ter sido recebido mesmo que a resposta tenha expirado.
-      // Consulta a mesma referência; em nenhum caso repete a criação aqui.
       try {
         const lookup = await lookupBravoOrder(order.id);
 
@@ -1701,8 +1943,10 @@ export default async function handler(req: any, res: any) {
     const bravoData = await readJson(bravoResponse);
 
     const returnedAmount = Number(bravoData?.amount_cents);
+
     const createdTransactionStatus =
       getBravoTransactionStatus(bravoData);
+
     const hasCreatedPixCode =
       typeof bravoData?.pix?.copy_paste === "string" &&
       bravoData.pix.copy_paste.length > 0;
@@ -1730,9 +1974,9 @@ export default async function handler(req: any, res: any) {
         }
       );
 
-      // Uma resposta incompleta também pode ocultar uma transação já criada.
       try {
         const lookup = await lookupBravoOrder(order.id);
+
         if (lookup.transaction) {
           return await persistAndReturnBravoTransaction(
             lookup.transaction,
@@ -1754,7 +1998,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // =====================================================
-    // 14. SALVAR ID DA TRANSAÇÃO
+    // 13. SALVAR ID DA TRANSAÇÃO
     // =====================================================
 
     const remainingMsBeforeSave =
@@ -1796,9 +2040,6 @@ export default async function handler(req: any, res: any) {
       getErrorCode(error) || ""
     );
 
-    // Nunca marcar como failed em timeout ou erro de comunicação.
-    // A cobrança pode ter sido criada no gateway.
-
     if (
       error?.name === "TimeoutError" ||
       error?.name === "AbortError"
@@ -1819,4 +2060,3 @@ export default async function handler(req: any, res: any) {
     });
   }
 }
-

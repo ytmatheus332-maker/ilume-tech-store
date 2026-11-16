@@ -73,7 +73,9 @@ export default function GatewaySettings() {
     return token;
   }
 
-  async function readApiResponse(response: Response): Promise<ApiResponse> {
+  async function readApiResponse(
+    response: Response
+  ): Promise<ApiResponse> {
     const result = await response.json().catch(() => null);
 
     if (!result || typeof result !== "object") {

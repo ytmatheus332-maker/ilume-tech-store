@@ -26,6 +26,19 @@ interface CheckoutCustomer {
   cpf: string;
 }
 
+interface CheckoutAddress {
+  recipientName: string;
+  recipientPhone: string;
+  postalCode: string;
+  street: string;
+  number: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  reference: string;
+}
+
 interface PixPayment {
   orderId: string;
   transactionId: string | null;
@@ -33,6 +46,10 @@ interface PixPayment {
   amountCents: number;
   copyPaste: string;
   expiresAt: string | null;
+}
+
+interface AddressTestResult {
+  orderId: string;
 }
 
 const CHECKOUT_REQUEST_KEY = "ilume_checkout_request_id";
@@ -184,6 +201,18 @@ export default function Checkout() {
   const [phone, setPhone] = useState("");
   const [cpf, setCpf] = useState("");
 
+  // Endereço de entrega: obrigatório para qualquer gateway.
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [street, setStreet] = useState("");
+  const [number, setNumber] = useState("");
+  const [complement, setComplement] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [reference, setReference] = useState("");
+
   const [gateway, setGateway] = useState<Gateway | null>(null);
   const [gatewayLoading, setGatewayLoading] = useState(true);
 
@@ -191,6 +220,9 @@ export default function Checkout() {
   const [error, setError] = useState<string | null>(null);
 
   const [pixPayment, setPixPayment] = useState<PixPayment | null>(null);
+  const [addressTestResult, setAddressTestResult] =
+    useState<AddressTestResult | null>(null);
+
   const [qrCodeImage, setQrCodeImage] = useState("");
   const [qrCodeError, setQrCodeError] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -256,6 +288,9 @@ export default function Checkout() {
   }, []);
 
   useEffect(() => {
+    // Uma confirmação do modo de teste nunca deve consultar gateways.
+    if (addressTestResult) return;
+
     const currentPixStatus = String(pixPayment?.status || "").toUpperCase();
     const isCurrentPaymentPending =
       !pixPayment || currentPixStatus === "PENDING";
@@ -351,7 +386,7 @@ export default function Checkout() {
       active = false;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [recoveryRequestId, pixPayment?.status]);
+  }, [recoveryRequestId, pixPayment?.status, addressTestResult]);
 
   async function handleFinishCheckout(
     event: FormEvent<HTMLFormElement>
@@ -370,7 +405,7 @@ export default function Checkout() {
       return;
     }
 
-    if (pixPayment) {
+    if (pixPayment || addressTestResult) {
       return;
     }
 
@@ -381,6 +416,26 @@ export default function Checkout() {
 
     if (gateway === "bravopay" && (!phone.trim() || !cpf.trim())) {
       setError("Preencha seu telefone e CPF.");
+      return;
+    }
+
+    const normalizedRecipientPhone = recipientPhone.replace(/\D/g, "");
+    const normalizedPostalCode = postalCode.replace(/\D/g, "");
+
+    if (
+      !recipientName.trim() ||
+      normalizedRecipientPhone.length < 10 ||
+      normalizedRecipientPhone.length > 13 ||
+      normalizedPostalCode.length !== 8 ||
+      !street.trim() ||
+      !number.trim() ||
+      !neighborhood.trim() ||
+      !city.trim() ||
+      !/^[A-Za-z]{2}$/.test(state.trim())
+    ) {
+      setError(
+        "Confira o endereço de entrega. Preencha todos os campos obrigatórios e informe um CEP e telefone válidos."
+      );
       return;
     }
 
@@ -395,6 +450,19 @@ export default function Checkout() {
         email: email.trim(),
         phone,
         cpf
+      };
+
+      const address: CheckoutAddress = {
+        recipientName: recipientName.trim(),
+        recipientPhone: normalizedRecipientPhone,
+        postalCode: normalizedPostalCode,
+        street: street.trim(),
+        number: number.trim(),
+        complement: complement.trim(),
+        neighborhood: neighborhood.trim(),
+        city: city.trim(),
+        state: state.trim().toUpperCase(),
+        reference: reference.trim()
       };
 
       const checkoutRequestId = getCheckoutRequestId();
@@ -413,6 +481,7 @@ export default function Checkout() {
         body: JSON.stringify({
           checkoutRequestId,
           customer,
+          address,
           items: itemsPayload,
         }),
       });
@@ -434,6 +503,31 @@ export default function Checkout() {
           data?.error ||
             "Não foi possível confirmar o pagamento. Sua tentativa foi preservada; tente recuperar este mesmo pedido em instantes."
         );
+        return;
+      }
+
+      // Modo de teste: endereço salvo, sem iniciar cobrança.
+      if (data.testMode === true) {
+        if (
+          data.addressSaved !== true ||
+          data.gatewayCalled !== false ||
+          typeof data.orderId !== "string" ||
+          !data.orderId
+        ) {
+          throw new Error(
+            "A resposta do teste de endereço não foi confirmada corretamente."
+          );
+        }
+
+        clearCheckoutRequestId();
+        setRecoveryRequestId(null);
+        setRecoveryPending(false);
+        setPixPayment(null);
+        setAddressTestResult({
+          orderId: data.orderId
+        });
+        setError(null);
+
         return;
       }
 
@@ -571,7 +665,7 @@ export default function Checkout() {
               ? "Seu pagamento foi confirmado pela BravoPay."
               : "O pedido ainda não está confirmado.";
 
-  if (cart.length === 0 && !pixPayment) {
+  if (cart.length === 0 && !pixPayment && !addressTestResult) {
     return (
       <main className="checkout-page">
         <div className="checkout-empty">
@@ -592,7 +686,53 @@ export default function Checkout() {
           Voltar para a sacola
         </Link>
 
-        {pixPayment ? (
+        {addressTestResult ? (
+          <section className="checkout-pix-panel">
+            <div className="checkout-pix-icon">
+              <CheckCircle2 size={34} />
+            </div>
+
+            <span className="checkout-confirmation-brand">
+              ILUME TECH STORE
+            </span>
+
+            <h1>Endereço salvo com sucesso</h1>
+
+            <p className="checkout-pix-description">
+              O pedido foi registrado e o endereço de entrega foi salvo
+              corretamente. Este foi um teste de persistência: nenhuma
+              cobrança foi criada.
+            </p>
+
+            <div className="checkout-pix-status">
+              <CheckCircle2 size={18} />
+              <div>
+                <strong>Teste concluído</strong>
+                <p>
+                  Endereço confirmado no banco de dados. Nenhum pagamento
+                  foi iniciado.
+                </p>
+              </div>
+            </div>
+
+            <div className="checkout-pix-order">
+              <span>NÚMERO DO PEDIDO DE TESTE</span>
+              <strong>{addressTestResult.orderId}</strong>
+            </div>
+
+            <p className="checkout-pix-disclaimer">
+              Este pedido está em ambiente de teste e não representa uma
+              compra paga.
+            </p>
+
+            <Link
+              to="/"
+              className="checkout-confirmation-button"
+            >
+              Voltar para a loja
+            </Link>
+          </section>
+        ) : pixPayment ? (
           <section className="checkout-pix-panel">
             <div className="checkout-pix-icon">
               <QrCode size={34} />
@@ -639,25 +779,25 @@ export default function Checkout() {
 
             {canPayWithPix && (
               <div className="checkout-pix-qr">
-              {qrCodeImage ? (
-                <img
-                  src={qrCodeImage}
-                  alt="QR Code para pagamento PIX"
-                />
-              ) : (
-                <div className="checkout-pix-qr-placeholder">
-                  {qrCodeError ? (
-                    <AlertCircle size={32} />
-                  ) : (
-                    <QrCode size={32} />
-                  )}
-                  <span>
-                    {qrCodeError
-                      ? "QR Code indisponível. Utilize o código PIX abaixo."
-                      : "Preparando QR Code..."}
-                  </span>
-                </div>
-              )}
+                {qrCodeImage ? (
+                  <img
+                    src={qrCodeImage}
+                    alt="QR Code para pagamento PIX"
+                  />
+                ) : (
+                  <div className="checkout-pix-qr-placeholder">
+                    {qrCodeError ? (
+                      <AlertCircle size={32} />
+                    ) : (
+                      <QrCode size={32} />
+                    )}
+                    <span>
+                      {qrCodeError
+                        ? "QR Code indisponível. Utilize o código PIX abaixo."
+                        : "Preparando QR Code..."}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -670,43 +810,43 @@ export default function Checkout() {
 
             {canPayWithPix && (
               <div className="checkout-pix-copy">
-              <label htmlFor="pix-copy-paste">
-                PIX copia e cola
-              </label>
+                <label htmlFor="pix-copy-paste">
+                  PIX copia e cola
+                </label>
 
-              <textarea
-                id="pix-copy-paste"
-                value={pixPayment.copyPaste}
-                readOnly
-                rows={4}
-              />
+                <textarea
+                  id="pix-copy-paste"
+                  value={pixPayment.copyPaste}
+                  readOnly
+                  rows={4}
+                />
 
-              <button
-                type="button"
-                className="checkout-submit checkout-pix-copy-button"
-                onClick={handleCopyPix}
-              >
-                {copied ? (
-                  <>
-                    <CheckCircle2 size={17} />
-                    Código copiado
-                  </>
-                ) : (
-                  <>
-                    <Copy size={17} />
-                    Copiar código PIX
-                  </>
-                )}
-              </button>
+                <button
+                  type="button"
+                  className="checkout-submit checkout-pix-copy-button"
+                  onClick={handleCopyPix}
+                >
+                  {copied ? (
+                    <>
+                      <CheckCircle2 size={17} />
+                      Código copiado
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={17} />
+                      Copiar código PIX
+                    </>
+                  )}
+                </button>
               </div>
             )}
 
             {canPayWithPix && (
               <div className="checkout-pix-expiration">
-              <Clock3 size={15} />
-              <span>
-                Validade informada: {formatExpiration(pixPayment.expiresAt)}
-              </span>
+                <Clock3 size={15} />
+                <span>
+                  Validade informada: {formatExpiration(pixPayment.expiresAt)}
+                </span>
               </div>
             )}
 
@@ -839,9 +979,162 @@ export default function Checkout() {
                   </div>
                 </section>
 
-                <section className="checkout-section checkout-payment-section">
+                <section className="checkout-section">
                   <div className="checkout-section-heading">
                     <span>02</span>
+                    <div>
+                      <h2>Endereço de entrega</h2>
+                      <p>
+                        Informe onde deseja receber seu pedido.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="checkout-fields">
+                    <label className="checkout-field checkout-field-full">
+                      Nome do destinatário
+                      <input
+                        type="text"
+                        placeholder="Nome de quem receberá o pedido"
+                        value={recipientName}
+                        onChange={(event) => setRecipientName(event.target.value)}
+                        minLength={3}
+                        maxLength={150}
+                        autoComplete="shipping name"
+                        required
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label className="checkout-field">
+                      Telefone do destinatário
+                      <input
+                        type="tel"
+                        placeholder="(00) 00000-0000"
+                        value={recipientPhone}
+                        onChange={(event) => setRecipientPhone(event.target.value)}
+                        autoComplete="shipping tel"
+                        inputMode="tel"
+                        required
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label className="checkout-field">
+                      CEP
+                      <input
+                        type="text"
+                        placeholder="00000-000"
+                        value={postalCode}
+                        onChange={(event) => setPostalCode(event.target.value)}
+                        maxLength={9}
+                        autoComplete="shipping postal-code"
+                        inputMode="numeric"
+                        required
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label className="checkout-field checkout-field-full">
+                      Rua / Avenida
+                      <input
+                        type="text"
+                        placeholder="Nome da rua ou avenida"
+                        value={street}
+                        onChange={(event) => setStreet(event.target.value)}
+                        maxLength={200}
+                        autoComplete="shipping address-line1"
+                        required
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label className="checkout-field">
+                      Número
+                      <input
+                        type="text"
+                        placeholder="Número"
+                        value={number}
+                        onChange={(event) => setNumber(event.target.value)}
+                        maxLength={30}
+                        autoComplete="shipping address-line2"
+                        required
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label className="checkout-field">
+                      Complemento
+                      <input
+                        type="text"
+                        placeholder="Apto, bloco, casa..."
+                        value={complement}
+                        onChange={(event) => setComplement(event.target.value)}
+                        maxLength={100}
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label className="checkout-field checkout-field-full">
+                      Bairro
+                      <input
+                        type="text"
+                        placeholder="Seu bairro"
+                        value={neighborhood}
+                        onChange={(event) => setNeighborhood(event.target.value)}
+                        maxLength={100}
+                        autoComplete="shipping address-level3"
+                        required
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label className="checkout-field">
+                      Cidade
+                      <input
+                        type="text"
+                        placeholder="Sua cidade"
+                        value={city}
+                        onChange={(event) => setCity(event.target.value)}
+                        maxLength={100}
+                        autoComplete="shipping address-level2"
+                        required
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label className="checkout-field">
+                      Estado (UF)
+                      <input
+                        type="text"
+                        placeholder="Ex.: SP"
+                        value={state}
+                        onChange={(event) => setState(event.target.value.toUpperCase())}
+                        maxLength={2}
+                        minLength={2}
+                        autoComplete="shipping address-level1"
+                        required
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label className="checkout-field checkout-field-full">
+                      Ponto de referência (opcional)
+                      <input
+                        type="text"
+                        placeholder="Ex.: próximo à praça"
+                        value={reference}
+                        onChange={(event) => setReference(event.target.value)}
+                        maxLength={200}
+                        disabled={loading}
+                      />
+                    </label>
+                  </div>
+                </section>
+
+                <section className="checkout-section checkout-payment-section">
+                  <div className="checkout-section-heading">
+                    <span>03</span>
                     <div>
                       <h2>Meio de pagamento</h2>
                       <p>
@@ -968,4 +1261,3 @@ export default function Checkout() {
     </main>
   );
 }
-
