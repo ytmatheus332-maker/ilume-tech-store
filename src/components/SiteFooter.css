@@ -1,0 +1,15 @@
+.site-footer { gap: 0; padding: 42px 24px 28px; }
+.site-footer .site-footer-brand { color: #f2f2f2; font-size: 20px; font-weight: 600; letter-spacing: 6px; text-decoration: none; }
+.site-footer .footer-signature { margin-top: 18px; }
+.site-footer-links { display: flex; max-width: 900px; flex-wrap: wrap; justify-content: center; gap: 10px 22px; margin-top: 26px; }
+.site-footer-links a, .site-footer-email, .site-footer-cookie-link { color: #b8bac1; font-size: 11px; text-decoration: none; text-underline-offset: 4px; }
+.site-footer-links a:hover, .site-footer-email:hover, .site-footer-cookie-link:hover { color: #e2c995; text-decoration: underline; }
+.site-footer-email { margin-top: 18px; }
+.site-footer-cookie-link { margin-top: 11px; padding: 5px; border: 0; background: transparent; cursor: pointer; }
+.site-footer-cookie-link:focus-visible, .site-footer a:focus-visible { outline: 2px solid #e2c995; outline-offset: 4px; }
+.site-footer small { margin-top: 17px; }
+
+@media (max-width: 560px) {
+  .site-footer { padding: 36px 18px calc(28px + env(safe-area-inset-bottom)); }
+  .site-footer-links { gap: 13px 17px; margin-top: 23px; }
+}

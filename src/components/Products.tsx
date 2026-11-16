@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getPublishedProducts } from "../services/catalog";
+import ProductColorSwatches from "./ProductColorSwatches";
+import { isIPhoneProduct } from "../utils/productPresentation";
 import type { CatalogProduct, CatalogVariant } from "../types/catalog";
 import "./Products.css";
 
@@ -124,18 +126,7 @@ export default function Products() {
     if (!isIPhonesPage) {
       return true;
     }
-
-    const categoryText = [
-      product.name,
-      product.brand,
-      product.model,
-      product.slug,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    return categoryText.includes("iphone");
+    return isIPhoneProduct(product.category_slugs, product.brand);
   });
 
   const featuredProducts = visibleProducts.filter(
@@ -278,6 +269,12 @@ export default function Products() {
                   <p className="product-description">
                     {description}
                   </p>
+
+                  <ProductColorSwatches
+                    variants={product.variants.filter((item) =>
+                      item.availability_status === "available" || item.availability_status === "preorder"
+                    )}
+                  />
 
                   {currentPrice !== null ? (
                     <div className="product-price">

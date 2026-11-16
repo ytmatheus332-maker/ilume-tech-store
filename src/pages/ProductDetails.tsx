@@ -11,6 +11,12 @@ import {
 import { useCart } from "../context/CartContext";
 import { getPublishedProducts } from "../services/catalog";
 import { getProductSpecs, groupSpecs } from "../data/productSpecs";
+import {
+  formatStorageCapacity,
+  getColorSwatch,
+  getVariantDetailsWithoutStorage,
+  isIPhoneProduct,
+} from "../utils/productPresentation";
 import type {
   CatalogImage,
   CatalogProduct,
@@ -32,17 +38,12 @@ const editorialImages: Record<string, string> = {
   "iphone-16-pro": "/images/iphone-16-pro.jpg",
 };
 
-function formatStorage(storageGb: number): string {
-  return storageGb >= 1024 ? `${storageGb / 1024} TB` : `${storageGb} GB`;
-}
-
-function getVariantLabel(variant: CatalogVariant, index: number): string {
-  const parts: string[] = [];
-
-  if (variant.color) parts.push(variant.color);
-  if (variant.storage_gb) parts.push(formatStorage(variant.storage_gb));
-
-  return parts.length > 0 ? parts.join(" · ") : `Opção ${index + 1}`;
+function getVariantAdditionalDetails(variant: CatalogVariant): string {
+  const details = getVariantDetailsWithoutStorage(variant);
+  const color = variant.color?.trim();
+  if (!color) return details;
+  const colorPrefix = `${color} · `;
+  return details.startsWith(colorPrefix) ? details.slice(colorPrefix.length) : "";
 }
 
 function getProductBadge(product: CatalogProduct): string | null {
@@ -79,29 +80,47 @@ function getPurchasableVariants(product: CatalogProduct): CatalogVariant[] {
     );
 }
 
-function resolveImage(
+interface ProductGalleryImage {
+  id: string;
+  src: string;
+  alt: string;
+}
+
+function resolveGalleryImages(
   product: CatalogProduct,
   variantId: string | null
-): { src: string; alt: string } {
-  const sorted: CatalogImage[] = [...product.images].sort(
+): ProductGalleryImage[] {
+  const sorted: CatalogImage[] = product.images
+    .filter((image) => image.variant_id === null || image.variant_id === variantId)
+    .sort(
     (a, b) =>
       Number(b.is_primary) - Number(a.is_primary) || a.position - b.position
   );
 
-  const chosen =
-    (variantId
-      ? sorted.find((image) => image.variant_id === variantId)
-      : undefined) ??
-    sorted.find((image) => image.variant_id === null) ??
-    sorted[0];
+  const seenPaths = new Set<string>();
+  const gallery = sorted.reduce<ProductGalleryImage[]>((images, image) => {
+    const path = image.storage_path.trim();
+    if (!path || seenPaths.has(path)) return images;
+    seenPaths.add(path);
 
-  const path = chosen?.storage_path;
-  const src =
-    path && /^https?:\/\//i.test(path)
-      ? path
-      : (editorialImages[product.slug] ?? PLACEHOLDER_IMAGE);
+    images.push({
+      id: image.id,
+      src: /^https?:\/\//i.test(path)
+        ? path
+        : (editorialImages[product.slug] ?? PLACEHOLDER_IMAGE),
+      alt: image.alt_text || product.name,
+    });
 
-  return { src, alt: chosen?.alt_text || product.name };
+    return images;
+  }, []);
+
+  if (gallery.length > 0) return gallery;
+
+  return [{
+    id: "product-fallback-image",
+    src: editorialImages[product.slug] ?? PLACEHOLDER_IMAGE,
+    alt: product.name,
+  }];
 }
 
 export default function ProductDetails() {
@@ -115,6 +134,7 @@ export default function ProductDetails() {
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
     null
   );
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
@@ -166,6 +186,77 @@ export default function ProductDetails() {
     () => (product ? getPurchasableVariants(product) : []),
     [product]
   );
+  const iphone = product
+    ? isIPhoneProduct(product.category_slugs, product.brand)
+    : false;
+  const colorOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return variants.flatMap((variant) => {
+      const color = variant.color?.trim();
+      if (!color) return [];
+      const key = color.toLocaleLowerCase("pt-BR");
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [color];
+    });
+  }, [variants]);
+  const storageOptions = useMemo(() => {
+    if (!iphone) return [];
+    return [...new Set(variants
+      .map((variant) => variant.storage_gb)
+      .filter((capacity): capacity is number => typeof capacity === "number" && Number.isFinite(capacity) && capacity > 0))]
+      .sort((a, b) => a - b);
+  }, [iphone, variants]);
+  const additionalVariantOptions = useMemo(() => {
+    if (!product || iphone) return [];
+    const seen = new Set<string>();
+    return variants.flatMap((variant) => {
+      const label = getVariantAdditionalDetails(variant);
+      if (!label) return [];
+      const key = label.toLocaleLowerCase("pt-BR");
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ label, variant }];
+    });
+  }, [iphone, product, variants]);
+
+  const preferredVariant =
+    variants.find((variant) => variant.id === selectedVariantId) ??
+    variants[0] ??
+    null;
+  const selectedVariant = preferredVariant;
+  const selectColor = (color: string) => {
+    const matching = variants.filter((variant) =>
+      variant.color?.trim().toLocaleLowerCase("pt-BR") === color.toLocaleLowerCase("pt-BR")
+    );
+    const matchingDetails = !iphone && selectedVariant
+      ? matching.find((variant) => getVariantAdditionalDetails(variant) === getVariantAdditionalDetails(selectedVariant))
+      : undefined;
+    const matchingStorage = matching.find((variant) => variant.storage_gb === selectedVariant?.storage_gb);
+    setSelectedVariantId((matchingDetails ?? matchingStorage ?? matching[0])?.id ?? null);
+  };
+  const selectStorage = (storageGb: number) => {
+    const matching = variants.filter((variant) => variant.storage_gb === storageGb);
+    const matchingColor = matching.find((variant) =>
+      (variant.color?.trim() ?? "").toLocaleLowerCase("pt-BR") ===
+      (selectedVariant?.color?.trim() ?? "").toLocaleLowerCase("pt-BR")
+    );
+    setSelectedVariantId((matchingColor ?? matching[0])?.id ?? null);
+  };
+  const selectAdditionalVariant = (label: string) => {
+    const matching = variants.filter((variant) =>
+      getVariantAdditionalDetails(variant).toLocaleLowerCase("pt-BR") === label.toLocaleLowerCase("pt-BR")
+    );
+    const matchingColor = matching.find((variant) =>
+      (variant.color?.trim() ?? "").toLocaleLowerCase("pt-BR") ===
+      (selectedVariant?.color?.trim() ?? "").toLocaleLowerCase("pt-BR")
+    );
+    setSelectedVariantId((matchingColor ?? matching[0])?.id ?? null);
+  };
+  const galleryImages = useMemo(
+    () => product ? resolveGalleryImages(product, selectedVariant?.id ?? null) : [],
+    [product, selectedVariant?.id]
+  );
 
   if (loading) {
     return (
@@ -204,11 +295,6 @@ export default function ProductDetails() {
     );
   }
 
-  const selectedVariant =
-    variants.find((variant) => variant.id === selectedVariantId) ??
-    variants[0] ??
-    null;
-
   const priceReais = selectedVariant ? selectedVariant.price_cents / 100 : 0;
   const compareReais =
     selectedVariant &&
@@ -217,7 +303,9 @@ export default function ProductDetails() {
       ? selectedVariant.compare_at_price_cents / 100
       : null;
 
-  const image = resolveImage(product, selectedVariant ? selectedVariant.id : null);
+  const image =
+    galleryImages.find((galleryImage) => galleryImage.id === selectedImageId) ??
+    galleryImages[0];
   const badge = getProductBadge(product);
   const specs = getProductSpecs(product.slug);
 
@@ -251,19 +339,46 @@ export default function ProductDetails() {
       </Link>
 
       <div className="product-details-layout">
-        <div className="product-details-image">
-          <span>ILUME AUTHENTIC</span>
-          <img src={image.src} alt={image.alt} />
+        <div className="product-details-gallery">
+          <div className="product-details-image">
+            <span>ILUME AUTHENTIC</span>
+            <img src={image.src} alt={image.alt} />
+          </div>
+
+          {galleryImages.length > 1 && (
+            <div className="product-image-thumbnails" role="group" aria-label="Imagens do produto">
+              {galleryImages.map((galleryImage, index) => {
+                const selected = galleryImage.id === image.id;
+
+                return (
+                  <button
+                    key={galleryImage.id}
+                    type="button"
+                    className={`product-image-thumbnail${selected ? " is-selected" : ""}`}
+                    aria-label={`Visualizar imagem ${index + 1} de ${galleryImages.length}`}
+                    aria-pressed={selected}
+                    onClick={() => setSelectedImageId(galleryImage.id)}
+                  >
+                    <img src={galleryImage.src} alt="" loading="lazy" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="product-details-info">
-          {badge && <span className="product-campaign-badge">{badge}</span>}
+          {badge && (
+            <span
+              className={`product-campaign-badge${product.campaign_type === "black_friday" ? " product-campaign-badge--black_friday" : ""}`}
+            >
+              {badge}
+            </span>
+          )}
 
           <span className="product-details-label">CURADORIA ILUME</span>
 
           <h1>{product.name}</h1>
-
-          <p className="product-details-description">{summary}</p>
 
           <div className="product-details-price-block">
             {selectedVariant ? (
@@ -273,7 +388,9 @@ export default function ProductDetails() {
                     {currencyFormatter.format(compareReais)}
                   </span>
                 )}
-                {currencyFormatter.format(priceReais)}
+                <strong className="product-details-current-price">
+                  {currencyFormatter.format(priceReais)}
+                </strong>
               </div>
             ) : (
               <div className="product-details-price product-details-unavailable">
@@ -286,30 +403,83 @@ export default function ProductDetails() {
             )}
           </div>
 
-          {variants.length > 1 && (
-            <div
-              className="product-variants"
-              role="radiogroup"
-              aria-label="Versão do produto"
-            >
-              <span className="product-variants-label">Versão</span>
+          <p className="product-details-description">{summary}</p>
 
-              <div className="product-variants-options">
-                {variants.map((variant, index) => {
-                  const selected = variant.id === selectedVariant?.id;
-
+          {colorOptions.length > 0 && (
+            <div className="product-choice-group">
+              <div className="product-choice-heading">
+                <span className="product-variants-label">Cor</span>
+                <strong>{selectedVariant?.color || "Indisponível"}</strong>
+              </div>
+              <div className="product-color-options" role="radiogroup" aria-label="Cor do produto">
+                {colorOptions.map((color) => {
+                  const selected = selectedVariant?.color?.trim().toLocaleLowerCase("pt-BR") === color.toLocaleLowerCase("pt-BR");
+                  const swatch = getColorSwatch(color);
                   return (
                     <button
-                      key={variant.id}
+                      key={color}
+                      type="button"
+                      role="radio"
+                      aria-label={color}
+                      aria-checked={selected}
+                      title={color}
+                      className={`product-color-option${selected ? " is-selected" : ""}${swatch ? "" : " has-unknown-swatch"}`}
+                      style={swatch ? { backgroundColor: swatch } : undefined}
+                      onClick={() => selectColor(color)}
+                    >
+                      <span />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {iphone && storageOptions.length > 0 && (
+            <div className="product-choice-group">
+              <div className="product-choice-heading">
+                <span className="product-variants-label">Armazenamento</span>
+                <strong>{selectedVariant?.storage_gb ? formatStorageCapacity(selectedVariant.storage_gb) : "Indisponível"}</strong>
+              </div>
+              <div className="product-variants-options" role="radiogroup" aria-label="Capacidade de armazenamento">
+                {storageOptions.map((storageGb) => {
+                  const selected = selectedVariant?.storage_gb === storageGb;
+                  return (
+                    <button
+                      key={storageGb}
                       type="button"
                       role="radio"
                       aria-checked={selected}
-                      className={`product-variant-option${
-                        selected ? " is-selected" : ""
-                      }`}
-                      onClick={() => setSelectedVariantId(variant.id)}
+                      className={`product-variant-option${selected ? " is-selected" : ""}`}
+                      onClick={() => selectStorage(storageGb)}
                     >
-                      {getVariantLabel(variant, index)}
+                      {formatStorageCapacity(storageGb)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {!iphone && additionalVariantOptions.length > 1 && (
+            <div className="product-choice-group">
+              <div className="product-choice-heading">
+                <span className="product-variants-label">Versão</span>
+                <strong>{getVariantAdditionalDetails(selectedVariant ?? additionalVariantOptions[0].variant)}</strong>
+              </div>
+              <div className="product-variants-options" role="radiogroup" aria-label="Versão do produto">
+                {additionalVariantOptions.map(({ label }) => {
+                  const selected = getVariantAdditionalDetails(selectedVariant ?? additionalVariantOptions[0].variant) === label;
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      className={`product-variant-option${selected ? " is-selected" : ""}`}
+                      onClick={() => selectAdditionalVariant(label)}
+                    >
+                      {label}
                     </button>
                   );
                 })}

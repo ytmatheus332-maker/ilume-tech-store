@@ -32,6 +32,16 @@ interface CategorySummary {
   parent_id: string | null;
 }
 
+interface CategoryOption extends CategorySummary {
+  depth: number;
+}
+
+interface DashboardSale {
+  total_amount_cents: number;
+  status: string;
+  created_at: string;
+}
+
 interface ProductSummary {
   id: string;
   category_id: string | null;
@@ -63,6 +73,11 @@ interface ProductImageSummary {
   alt_text: string | null;
   position: number;
   is_primary: boolean;
+}
+
+interface PendingImageCleanup {
+  productId: string;
+  token: string;
 }
 
 interface ProductFormState {
@@ -137,6 +152,26 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+async function readProductImagesApiResponse(response: Response): Promise<Record<string, any>> {
+  const body = await response.text();
+  if (!body.trim()) {
+    throw new Error(`A API de imagens respondeu sem conteúdo (HTTP ${response.status}). Inicie o projeto com o comando local que executa as APIs.`);
+  }
+
+  let result: unknown;
+  try {
+    result = JSON.parse(body);
+  } catch {
+    throw new Error(`A API de imagens respondeu em formato inválido (HTTP ${response.status}). Confirme que o servidor local está executando as funções da pasta api.`);
+  }
+
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    throw new Error(`A API de imagens retornou uma resposta inválida (HTTP ${response.status}).`);
+  }
+
+  return result as Record<string, any>;
+}
+
 function getStatusLabel(status: ProductStatus) {
   const labels: Record<ProductStatus, string> = {
     draft: "Rascunho",
@@ -202,8 +237,26 @@ export default function AdminDashboard() {
   const [categories, setCategories] = useState<CategorySummary[]>([]);
   const [variants, setVariants] = useState<VariantSummary[]>([]);
   const [images, setImages] = useState<ProductImageSummary[]>([]);
+  const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
+  const [retryingImageCleanup, setRetryingImageCleanup] = useState(false);
+  const [pendingImageCleanups, setPendingImageCleanups] = useState<PendingImageCleanup[]>(() => {
+    try {
+      const stored = window.localStorage.getItem("ilume_admin_product_image_cleanup_v1");
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed.filter((item) =>
+        item && typeof item.productId === "string" && typeof item.token === "string"
+      ) as PendingImageCleanup[] : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [orders, setOrders] = useState<OrderSummary[]>([]);
+  const [dashboardSales, setDashboardSales] = useState<DashboardSale[]>([]);
+  const [dashboardOrderCount, setDashboardOrderCount] = useState<number | null>(null);
+  const [dashboardAnalyticsLoading, setDashboardAnalyticsLoading] = useState(false);
+  const [dashboardAnalyticsError, setDashboardAnalyticsError] = useState<string | null>(null);
+  const [dashboardSalesTruncated, setDashboardSalesTruncated] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderSummary | null>(null);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [orderSearch, setOrderSearch] = useState("");
@@ -219,10 +272,14 @@ export default function AdminDashboard() {
 
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [sku, setSku] = useState("");
+  const [productSkus, setProductSkus] = useState<Record<string, string[]>>({});
+  const [productSkuSearchUnavailable, setProductSkuSearchUnavailable] = useState(false);
   const [color, setColor] = useState("");
   const [storage, setStorage] = useState("128");
   const [priceReais, setPriceReais] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedProductCategoryId, setSelectedProductCategoryId] = useState("all");
+  const [productStatusFilter, setProductStatusFilter] = useState("all");
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -249,23 +306,136 @@ export default function AdminDashboard() {
     [products]
   );
 
+  const hierarchicalCategories = useMemo<CategoryOption[]>(() => {
+    const byId = new Map(categories.map((category) => [category.id, category]));
+    const children = new Map<string | null, CategorySummary[]>();
+    categories.forEach((category) => {
+      const parentId = category.parent_id && byId.has(category.parent_id) ? category.parent_id : null;
+      const group = children.get(parentId) || [];
+      group.push(category);
+      children.set(parentId, group);
+    });
+
+    const result: CategoryOption[] = [];
+    const visited = new Set<string>();
+    const visit = (parentId: string | null, depth: number) => {
+      (children.get(parentId) || [])
+        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+        .forEach((category) => {
+          if (visited.has(category.id)) return;
+          visited.add(category.id);
+          result.push({ ...category, depth });
+          visit(category.id, depth + 1);
+        });
+    };
+    visit(null, 0);
+    categories.forEach((category) => {
+      if (!visited.has(category.id)) result.push({ ...category, depth: 0 });
+    });
+    return result;
+  }, [categories]);
+
+  const categorySubtreeIds = useMemo(() => {
+    const children = new Map<string, string[]>();
+    categories.forEach((category) => {
+      if (!category.parent_id) return;
+      const siblings = children.get(category.parent_id) || [];
+      siblings.push(category.id);
+      children.set(category.parent_id, siblings);
+    });
+
+    const result: Record<string, string[]> = {};
+    categories.forEach((category) => {
+      const descendants = new Set<string>();
+      const pending = [category.id];
+      while (pending.length > 0) {
+        const current = pending.pop()!;
+        if (descendants.has(current)) continue;
+        descendants.add(current);
+        pending.push(...(children.get(current) || []));
+      }
+      result[category.id] = [...descendants];
+    });
+    return result;
+  }, [categories]);
+
+  const categoryNavigationOptions = useMemo(() => hierarchicalCategories.map((category) => {
+    const subtree = new Set(categorySubtreeIds[category.id] || [category.id]);
+    return {
+      ...category,
+      productCount: products.filter((product) => product.category_id !== null && subtree.has(product.category_id)).length,
+    };
+  }), [categorySubtreeIds, hierarchicalCategories, products]);
+
+  const uncategorizedProductCount = useMemo(
+    () => products.filter((product) => product.category_id === null).length,
+    [products]
+  );
+
+  const categoryProductCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    products.forEach((product) => {
+      const key = product.category_id || "__uncategorized__";
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .map(([categoryId, count]) => ({
+        id: categoryId,
+        name: categoryId === "__uncategorized__"
+          ? "Sem categoria"
+          : categories.find((category) => category.id === categoryId)?.name || "Categoria não disponível",
+        count,
+      }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "pt-BR"))
+      .slice(0, 6);
+  }, [categories, products]);
+
+  const productStatusCounts = useMemo(() => ([
+    { key: "published", label: "Publicados", count: products.filter((product) => product.status === "published").length, color: "#58bd8d" },
+    { key: "draft", label: "Rascunhos", count: products.filter((product) => product.status === "draft").length, color: "#d6b36b" },
+    { key: "inactive", label: "Inativos", count: products.filter((product) => product.status === "inactive").length, color: "#88909e" },
+    { key: "archived", label: "Arquivados", count: products.filter((product) => product.status === "archived").length, color: "#aa8dd4" },
+  ]), [products]);
+
+  const salesByMonth = useMemo(() => {
+    const now = new Date();
+    return Array.from({ length: 12 }, (_, index) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - (11 - index), 1);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      return {
+        key,
+        label: new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(date).replace(".", ""),
+        total: dashboardSales
+          .filter((sale) => sale.created_at.slice(0, 7) === key && ["approved", "paid"].includes(sale.status.toLowerCase()))
+          .reduce((sum, sale) => sum + sale.total_amount_cents, 0),
+      };
+    });
+  }, [dashboardSales]);
+
+  const dashboardSalesTotal = useMemo(
+    () => dashboardSales.reduce((sum, sale) => sum + sale.total_amount_cents, 0),
+    [dashboardSales]
+  );
+
   const filteredProducts = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    if (!term) return products;
-
     return products.filter((product) => {
-      const categoryName =
-        categories.find((category) => category.id === product.category_id)?.name || "";
+      const matchesCategory = selectedProductCategoryId === "all"
+        ? true
+        : selectedProductCategoryId === "__uncategorized__"
+          ? product.category_id === null
+          : (categorySubtreeIds[selectedProductCategoryId] || [selectedProductCategoryId]).includes(product.category_id || "");
+      const matchesStatus = productStatusFilter === "all" || product.status === productStatusFilter;
+      if (!matchesCategory || !matchesStatus) return false;
+      if (!term) return true;
 
-      return (
-        product.name.toLowerCase().includes(term) ||
-        product.slug.toLowerCase().includes(term) ||
-        (product.brand || "").toLowerCase().includes(term) ||
-        (product.model || "").toLowerCase().includes(term) ||
-        categoryName.toLowerCase().includes(term)
-      );
+      const categoryName = categories.find((category) => category.id === product.category_id)?.name || "";
+      const matchesText = [product.name, product.slug, product.brand || "", product.model || "", categoryName]
+        .some((value) => value.toLowerCase().includes(term));
+      const matchesSku = (productSkus[product.id] || []).some((value) => value.toLowerCase().includes(term));
+      return matchesText || matchesSku;
     });
-  }, [products, categories, searchTerm]);
+  }, [products, categories, searchTerm, selectedProductCategoryId, categorySubtreeIds, productStatusFilter, productSkus]);
 
   const filteredOrders = useMemo(() => {
     const term = orderSearch.trim().toLowerCase();
@@ -309,7 +479,55 @@ export default function AdminDashboard() {
   }, []);
 
   async function fetchInitialData() {
-    await Promise.all([fetchProducts(), fetchCategories()]);
+    await Promise.all([fetchProducts(), fetchCategories(), fetchDashboardAnalytics()]);
+  }
+
+  async function fetchDashboardAnalytics() {
+    setDashboardAnalyticsLoading(true);
+    setDashboardAnalyticsError(null);
+    setDashboardSalesTruncated(false);
+    try {
+      const { count, error: countError } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true });
+      if (countError) throw countError;
+      setDashboardOrderCount(count ?? 0);
+
+      const start = new Date();
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+      start.setMonth(start.getMonth() - 11);
+      const pageSize = 1000;
+      const maxRows = 5000;
+      const rows: DashboardSale[] = [];
+      let offset = 0;
+      let expectedCount: number | null = null;
+
+      while (offset < maxRows) {
+        const { data, count: salesCount, error } = await supabase
+          .from("orders")
+          .select("total_amount_cents, status, created_at", { count: "exact" })
+          .in("status", ["approved", "paid"])
+          .gte("created_at", start.toISOString())
+          .order("created_at", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        expectedCount = salesCount;
+        rows.push(...((data || []) as DashboardSale[]));
+        if (!data || data.length < pageSize) break;
+        offset += pageSize;
+      }
+
+      setDashboardSales(rows);
+      setDashboardSalesTruncated(expectedCount !== null && expectedCount > rows.length);
+    } catch (error) {
+      console.error("Erro ao carregar indicadores do dashboard:", error);
+      setDashboardAnalyticsError(error instanceof Error ? error.message : "Indicadores indisponíveis.");
+      setDashboardOrderCount(null);
+      setDashboardSales([]);
+    } finally {
+      setDashboardAnalyticsLoading(false);
+    }
   }
 
   async function fetchProducts() {
@@ -324,7 +542,33 @@ export default function AdminDashboard() {
         .order("name");
 
       if (error) throw error;
-      setProducts((data || []) as ProductSummary[]);
+      const loadedProducts = (data || []) as ProductSummary[];
+      setProducts(loadedProducts);
+
+      if (loadedProducts.length === 0) {
+        setProductSkus({});
+        setProductSkuSearchUnavailable(false);
+        return;
+      }
+
+      const { data: variantRows, error: variantError } = await supabase
+        .from("product_variants")
+        .select("product_id, sku")
+        .in("product_id", loadedProducts.map((product) => product.id));
+
+      if (variantError) {
+        console.error("Não foi possível carregar SKUs para a busca do catálogo:", variantError.message);
+        setProductSkus({});
+        setProductSkuSearchUnavailable(true);
+      } else {
+        const skuMap: Record<string, string[]> = {};
+        (variantRows || []).forEach((row) => {
+          if (!row.sku) return;
+          (skuMap[row.product_id] ||= []).push(row.sku);
+        });
+        setProductSkus(skuMap);
+        setProductSkuSearchUnavailable(false);
+      }
     } catch (error) {
       alert("Erro ao carregar catálogo: " +
         (error instanceof Error ? error.message : "Erro desconhecido"));
@@ -338,7 +582,6 @@ export default function AdminDashboard() {
       const { data, error } = await supabase
         .from("categories")
         .select("id, name, slug, is_active, parent_id")
-        .eq("is_active", true)
         .order("name");
 
       if (error) throw error;
@@ -498,10 +741,17 @@ export default function AdminDashboard() {
 
     if (!name) return alert("Informe o nome do produto.");
     if (!slug) return alert("Informe um slug válido para o produto.");
+    if (!productForm.category_id) return alert("Selecione uma categoria ativa para direcionar o produto corretamente na loja.");
 
-    if (productForm.category_id &&
-      !categories.some((category) => category.id === productForm.category_id)) {
+    const assignedCategory = categories.find((category) => category.id === productForm.category_id);
+    if (!assignedCategory) {
       return alert("Selecione uma categoria válida e ativa.");
+    }
+    const existingCategoryId = editingProductId
+      ? products.find((product) => product.id === editingProductId)?.category_id
+      : null;
+    if (!assignedCategory.is_active && existingCategoryId !== assignedCategory.id) {
+      return alert("Categorias inativas não podem ser atribuídas a produtos.");
     }
 
     setSaving(true);
@@ -808,6 +1058,80 @@ export default function AdminDashboard() {
     }
   }
 
+  function savePendingImageCleanups(next: PendingImageCleanup[]) {
+    setPendingImageCleanups(next);
+    try {
+      window.localStorage.setItem("ilume_admin_product_image_cleanup_v1", JSON.stringify(next));
+      return true;
+    } catch (error) {
+      console.error("Não foi possível salvar a pendência de limpeza da imagem.", error);
+      return false;
+    }
+  }
+
+  async function getAdminAccessToken() {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    if (!data.session?.access_token) throw new Error("Sua sessão expirou. Entre novamente no painel.");
+    return data.session.access_token;
+  }
+
+  async function handleDeleteImage(image: ProductImageSummary) {
+    if (!selectedProduct) return;
+    const confirmed = window.confirm(
+      `Excluir permanentemente esta foto de ${selectedProduct.name}?\n\nA imagem será removida da galeria e do armazenamento. Esta ação não pode ser desfeita.`
+    );
+    if (!confirmed) return;
+    setDeletingImageId(image.id);
+    try {
+      const token = await getAdminAccessToken();
+      const response = await fetch("/api/admin/product-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "delete", image_id: image.id, product_id: selectedProduct.id }),
+      });
+      const result = await readProductImagesApiResponse(response);
+      if (result.imageRemoved) await fetchImages(selectedProduct.id);
+      let cleanupPersisted = true;
+      if (result.cleanupToken) {
+        cleanupPersisted = savePendingImageCleanups([
+          ...pendingImageCleanups.filter((item) => item.token !== result.cleanupToken),
+          { productId: selectedProduct.id, token: result.cleanupToken },
+        ]);
+      }
+      if (!response.ok || !result.success) {
+        alert(`${result.error || "Não foi possível concluir a exclusão da imagem."}${result.cleanupToken && !cleanupPersisted ? " A tentativa de limpeza não pôde ser salva para depois; mantenha este painel aberto e tente novamente antes de sair." : ""}`);
+        return;
+      }
+      await fetchImages(selectedProduct.id);
+      alert("Imagem removida da galeria e do Storage.");
+    } catch (error) {
+      alert("Não foi possível excluir a imagem: " + (error instanceof Error ? error.message : "Erro desconhecido"));
+    } finally {
+      setDeletingImageId(null);
+    }
+  }
+
+  async function handleRetryImageCleanup(item: PendingImageCleanup) {
+    setRetryingImageCleanup(true);
+    try {
+      const token = await getAdminAccessToken();
+      const response = await fetch("/api/admin/product-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "cleanup", cleanup_token: item.token }),
+      });
+      const result = await readProductImagesApiResponse(response);
+      if (!response.ok || !result.success) throw new Error(result.error || "A limpeza do Storage não foi concluída.");
+      savePendingImageCleanups(pendingImageCleanups.filter((pending) => pending.token !== item.token));
+      alert("Arquivo pendente removido do Storage.");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Não foi possível concluir a limpeza do Storage.");
+    } finally {
+      setRetryingImageCleanup(false);
+    }
+  }
+
   async function handlePublishProduct() {
     if (!selectedProduct) return;
 
@@ -855,6 +1179,28 @@ export default function AdminDashboard() {
     setSelectedOrder(null);
   }
 
+  const salesChartPoints = salesByMonth.map((month, index) => {
+    const maxValue = Math.max(1, ...salesByMonth.map((item) => item.total));
+    const x = 42 + index * (596 / Math.max(1, salesByMonth.length - 1));
+    const y = 184 - (month.total / maxValue) * 138;
+    return { ...month, x, y };
+  });
+  const salesChartPath = salesChartPoints
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ");
+  const salesChartArea = salesChartPoints.length > 0
+    ? `${salesChartPath} L ${salesChartPoints[salesChartPoints.length - 1].x} 190 L ${salesChartPoints[0].x} 190 Z`
+    : "";
+  const productStatusTotal = productStatusCounts.reduce((total, item) => total + item.count, 0);
+  const statusCircumference = 2 * Math.PI * 43;
+  let statusStrokeOffset = 0;
+  const statusSegments = productStatusCounts.map((item) => {
+    const length = productStatusTotal > 0 ? item.count / productStatusTotal * statusCircumference : 0;
+    const segment = { ...item, length, offset: statusStrokeOffset };
+    statusStrokeOffset += length;
+    return segment;
+  });
+
   return (
     <main className="ilume-admin">
       <aside className="admin-sidebar">
@@ -866,26 +1212,37 @@ export default function AdminDashboard() {
         <div className="sidebar-label">WORKSPACE</div>
 
         <nav className="sidebar-navigation">
-          <button type="button" className={`sidebar-link ${activeView === "visao-geral" ? "active" : ""}`} onClick={() => setActiveView("visao-geral")}>
-            <LayoutDashboard size={18} /><span>Visão geral</span>
-          </button>
+          <div className="sidebar-nav-group">
+            <span className="sidebar-group-label">Visão geral</span>
+            <button type="button" aria-current={activeView === "visao-geral" ? "page" : undefined} className={`sidebar-link ${activeView === "visao-geral" ? "active" : ""}`} onClick={() => setActiveView("visao-geral")}>
+              <LayoutDashboard size={18} /><span>Dashboard</span>
+            </button>
+          </div>
 
-          <button type="button" className={`sidebar-link ${activeView === "catalogo" ? "active" : ""}`} onClick={() => setActiveView("catalogo")}>
-            <Smartphone size={18} /><span>Catálogo</span><em className="sidebar-count">{products.length}</em>
-          </button>
+          <div className="sidebar-nav-group">
+            <span className="sidebar-group-label">Catálogo e marketing</span>
+            <button type="button" aria-current={activeView === "catalogo" ? "page" : undefined} className={`sidebar-link ${activeView === "catalogo" ? "active" : ""}`} onClick={() => setActiveView("catalogo")}>
+              <Smartphone size={18} /><span>Produtos</span><em className="sidebar-count">{products.length}</em>
+            </button>
+            <button type="button" aria-current={activeView === "produto" ? "page" : undefined} className={`sidebar-link ${activeView === "produto" ? "active" : ""}`} onClick={() => setActiveView("produto")}>
+              <Package size={18} /><span>Variantes, galeria e campanhas</span>
+            </button>
+          </div>
 
-          <button type="button" className={`sidebar-link ${activeView === "pedidos" ? "active" : ""}`} onClick={() => void openOrdersView()}>
-            <ShoppingBag size={18} /><span>Pedidos</span>
-            {pendingOrdersCount > 0 && <em className="sidebar-count">{pendingOrdersCount}</em>}
-          </button>
+          <div className="sidebar-nav-group">
+            <span className="sidebar-group-label">Vendas</span>
+            <button type="button" aria-current={activeView === "pedidos" ? "page" : undefined} className={`sidebar-link ${activeView === "pedidos" ? "active" : ""}`} onClick={() => void openOrdersView()}>
+              <ShoppingBag size={18} /><span>Pedidos e logística</span>
+              {pendingOrdersCount > 0 && <em className="sidebar-count">{pendingOrdersCount}</em>}
+            </button>
+          </div>
 
-          <button type="button" className={`sidebar-link ${activeView === "produto" ? "active" : ""}`} onClick={() => setActiveView("produto")}>
-            <Package size={18} /><span>Gestão de produto</span>
-          </button>
-
-          <button type="button" className={`sidebar-link ${activeView === "gateway" ? "active" : ""}`} onClick={() => setActiveView("gateway")}>
-            <CreditCard size={18} /><span>Gateway</span>
-          </button>
+          <div className="sidebar-nav-group">
+            <span className="sidebar-group-label">Configurações</span>
+            <button type="button" aria-current={activeView === "gateway" ? "page" : undefined} className={`sidebar-link ${activeView === "gateway" ? "active" : ""}`} onClick={() => setActiveView("gateway")}>
+              <CreditCard size={18} /><span>Gateway</span>
+            </button>
+          </div>
         </nav>
 
         <div className="sidebar-divider" />
@@ -958,6 +1315,104 @@ export default function AdminDashboard() {
                 <article className="stat-card">
                   <div className="stat-card-top"><span>Em destaque</span><div className="stat-icon purple"><Star size={19} /></div></div>
                   <strong>{featuredCount}</strong><small>Produtos destacados</small>
+                </article>
+              </section>
+
+              <section className="admin-stats admin-commerce-stats" aria-label="Indicadores de vendas">
+                <article className="stat-card">
+                  <div className="stat-card-top"><span>Total de pedidos</span><div className="stat-icon neutral"><ShoppingBag size={19} /></div></div>
+                  <strong>{dashboardAnalyticsLoading ? "…" : dashboardOrderCount === null ? "—" : dashboardOrderCount}</strong>
+                  <small>Contagem real de pedidos registrados</small>
+                </article>
+                <article className="stat-card">
+                  <div className="stat-card-top"><span>Vendas aprovadas · 12 meses</span><div className="stat-icon amber"><CircleDollarSign size={19} /></div></div>
+                  <strong>{dashboardAnalyticsLoading || dashboardAnalyticsError || dashboardSalesTruncated ? "—" : formatPrice(dashboardSalesTotal)}</strong>
+                  <small>{dashboardSalesTruncated ? "Volume acima do limite de leitura segura" : "Somente pedidos com status aprovado ou pago"}</small>
+                </article>
+              </section>
+              {dashboardAnalyticsError && (
+                <p className="dashboard-analytics-error" role="status">
+                  Indicadores de pedidos indisponíveis: {dashboardAnalyticsError}
+                </p>
+              )}
+
+              <section className="dashboard-charts-grid" aria-label="Análises do catálogo e vendas">
+                <article className="overview-card dashboard-chart-card">
+                  <div className="overview-card-head">
+                    <div><span className="eyebrow">DESEMPENHO</span><h2>Vendas aprovadas</h2><p>Valor por mês · últimos 12 meses</p></div>
+                    <span className="dashboard-chart-period">12 MESES</span>
+                  </div>
+                  {dashboardAnalyticsError ? (
+                    <div className="dashboard-chart-message">A série de vendas não pôde ser carregada.</div>
+                  ) : dashboardAnalyticsLoading ? (
+                    <div className="dashboard-chart-message">Carregando dados de pedidos...</div>
+                  ) : dashboardSalesTruncated ? (
+                    <div className="dashboard-chart-message" role="status">A consulta atingiu o limite seguro de registros. O gráfico foi ocultado para não apresentar um total parcial como se fosse completo.</div>
+                  ) : (
+                    <div className="sales-chart-wrap">
+                      <svg className="sales-chart" viewBox="0 0 680 242" role="img" aria-label="Gráfico de vendas aprovadas por mês">
+                        {[0, 1, 2, 3].map((line) => {
+                          const y = 46 + line * 46;
+                          return <line key={line} x1="40" x2="640" y1={y} y2={y} className="sales-chart-gridline" />;
+                        })}
+                        <path d={salesChartArea} className="sales-chart-area" />
+                        <path d={salesChartPath} className="sales-chart-line" />
+                        {salesChartPoints.map((point) => (
+                          <g key={point.key}>
+                            <circle cx={point.x} cy={point.y} r="3.5" className="sales-chart-point"><title>{point.label}: {formatPrice(point.total)}</title></circle>
+                            <text x={point.x} y="220" className="sales-chart-label">{point.label}</text>
+                          </g>
+                        ))}
+                      </svg>
+                      {dashboardSales.length === 0 && <span className="sales-chart-empty-note">Sem vendas aprovadas no período.</span>}
+                    </div>
+                  )}
+                </article>
+
+                <article className="overview-card dashboard-chart-card dashboard-status-card">
+                  <div className="overview-card-head">
+                    <div><span className="eyebrow">CATÁLOGO</span><h2>Situação dos produtos</h2><p>Todos os status cadastrados</p></div>
+                  </div>
+                  <div className="status-chart-layout">
+                    <svg className="status-donut" viewBox="0 0 120 120" role="img" aria-label={`Situação de ${productStatusTotal} produtos`}>
+                      <circle cx="60" cy="60" r="43" className="status-donut-track" />
+                      {statusSegments.map((segment) => segment.count > 0 && (
+                        <circle key={segment.key} cx="60" cy="60" r="43" fill="none" stroke={segment.color}
+                          strokeWidth="13" strokeDasharray={`${segment.length} ${statusCircumference - segment.length}`}
+                          strokeDashoffset={-segment.offset} transform="rotate(-90 60 60)" />
+                      ))}
+                      <text x="60" y="57" className="status-donut-total">{productStatusTotal}</text>
+                      <text x="60" y="72" className="status-donut-caption">produtos</text>
+                    </svg>
+                    <div className="status-chart-legend">
+                      {productStatusCounts.map((item) => (
+                        <div key={item.key}><span style={{ backgroundColor: item.color }} /><span>{item.label}</span><strong>{item.count}</strong></div>
+                      ))}
+                    </div>
+                  </div>
+                </article>
+              </section>
+
+              <section className="dashboard-charts-grid dashboard-charts-grid--secondary" aria-label="Produtos por categoria">
+                <article className="overview-card dashboard-chart-card dashboard-category-chart">
+                  <div className="overview-card-head">
+                    <div><span className="eyebrow">DISTRIBUIÇÃO</span><h2>Produtos por categoria</h2><p>Categoria persistida em cada produto</p></div>
+                    <button type="button" className="secondary-button" onClick={() => setActiveView("catalogo")}>Ver catálogo<ChevronRight size={15} /></button>
+                  </div>
+                  {categoryProductCounts.length === 0 ? <div className="dashboard-chart-message">Nenhum produto cadastrado para agrupar.</div> : (
+                    <div className="category-chart-list">
+                      {categoryProductCounts.map((item) => {
+                        const maxCount = Math.max(1, ...categoryProductCounts.map((category) => category.count));
+                        return (
+                          <div className="category-chart-row" key={item.id}>
+                            <span>{item.name}</span>
+                            <div><i style={{ width: `${Math.max(4, item.count / maxCount * 100)}%` }} /></div>
+                            <strong>{item.count}</strong>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </article>
               </section>
 
@@ -1215,7 +1670,7 @@ export default function AdminDashboard() {
                   <form className="product-form" onSubmit={handleSaveProduct}>
                     <div className="product-form-grid">
                       <div className="form-field"><label htmlFor="product-name">Nome do produto *</label><input id="product-name" type="text" placeholder="Ex: iPhone 17 Pro Max" value={productForm.name} onChange={(event) => handleProductNameChange(event.target.value)} maxLength={160} required /></div>
-                      <div className="form-field"><label htmlFor="product-category">Categoria</label><select id="product-category" value={productForm.category_id} onChange={(event) => handleProductFormChange("category_id", event.target.value)}><option value="">Sem categoria</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div>
+                      <div className="form-field"><label htmlFor="product-category">Categoria *</label><select id="product-category" value={productForm.category_id} onChange={(event) => handleProductFormChange("category_id", event.target.value)} required disabled={categories.length === 0}><option value="">Selecione uma categoria existente</option>{hierarchicalCategories.map((category) => <option key={category.id} value={category.id} disabled={!category.is_active && category.id !== products.find((product) => product.id === editingProductId)?.category_id}>{`${"— ".repeat(category.depth)}${category.name}${category.is_active ? "" : " (inativa)"}`}</option>)}</select><small>{categories.length === 0 ? "Não há categorias cadastradas. O cadastro de produtos requer uma categoria persistida." : "A categoria cadastrada define em qual área da loja o produto será exibido."}</small></div>
                       <div className="form-field"><label htmlFor="product-brand">Marca</label><input id="product-brand" type="text" placeholder="Ex: Apple" value={productForm.brand} onChange={(event) => handleProductFormChange("brand", event.target.value)} maxLength={100} /></div>
                       <div className="form-field"><label htmlFor="product-model">Modelo</label><input id="product-model" type="text" placeholder="Ex: A3105" value={productForm.model} onChange={(event) => handleProductFormChange("model", event.target.value)} maxLength={120} /></div>
                       <div className="form-field product-form-full"><label htmlFor="product-slug">Slug / endereço do produto *</label><input id="product-slug" type="text" placeholder="nome-do-produto" value={productForm.slug} onChange={(event) => handleProductSlugChange(event.target.value)} maxLength={180} required /><small>Gerado automaticamente pelo nome. Você também pode personalizar; não pode se repetir.</small></div>
@@ -1233,12 +1688,49 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              <div className="catalog-toolbar">
-                <div className="search-box"><Search size={17} /><input type="search" placeholder="Buscar por nome, marca, modelo ou categoria..." value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} /></div>
-                <span className="catalog-counter">{filteredProducts.length} de {products.length} produtos</span>
-              </div>
+              <div className="catalog-browser">
+                <aside className="category-filter-panel" aria-label="Filtros por categoria">
+                  <div className="category-filter-heading">
+                    <div><span className="eyebrow">ORGANIZAÇÃO</span><strong>Categorias</strong></div>
+                    <span>{products.length}</span>
+                  </div>
+                  <nav className="category-filter-list" aria-label="Selecionar categoria de produtos">
+                    <button type="button" className={`category-filter-option${selectedProductCategoryId === "all" ? " is-selected" : ""}`} aria-pressed={selectedProductCategoryId === "all"} onClick={() => setSelectedProductCategoryId("all")}>
+                      <span>Todos os produtos</span><em>{products.length}</em>
+                    </button>
+                    {categoryNavigationOptions.map((category) => (
+                      <button
+                        type="button"
+                        key={category.id}
+                        className={`category-filter-option${selectedProductCategoryId === category.id ? " is-selected" : ""}`}
+                        style={{ paddingLeft: `${12 + Math.min(category.depth, 5) * 13}px` }}
+                        aria-pressed={selectedProductCategoryId === category.id}
+                        aria-label={`${category.name}, ${category.productCount} produtos nesta categoria e subcategorias`}
+                        onClick={() => setSelectedProductCategoryId(category.id)}
+                      >
+                        <span>{category.depth > 0 && <i aria-hidden="true">↳</i>}{category.name}</span>
+                        <em>{category.productCount}</em>
+                      </button>
+                    ))}
+                    {uncategorizedProductCount > 0 && (
+                      <button type="button" className={`category-filter-option${selectedProductCategoryId === "__uncategorized__" ? " is-selected" : ""}`} aria-pressed={selectedProductCategoryId === "__uncategorized__"} onClick={() => setSelectedProductCategoryId("__uncategorized__")}>
+                        <span>Sem categoria</span><em>{uncategorizedProductCount}</em>
+                      </button>
+                    )}
+                  </nav>
+                </aside>
 
-              <div className="catalog-table-wrapper">
+                <div className="catalog-browser-main">
+                  <div className="catalog-toolbar">
+                    <div className="search-box"><Search size={17} /><input type="search" placeholder="Buscar por nome, marca, modelo ou SKU..." value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} /></div>
+                    <div className="catalog-toolbar-controls">
+                      <label className="catalog-status-filter"><span>Situação</span><select aria-label="Filtrar produtos por situação" value={productStatusFilter} onChange={(event) => setProductStatusFilter(event.target.value)}><option value="all">Todos</option><option value="published">Publicados</option><option value="draft">Rascunhos</option><option value="inactive">Inativos</option><option value="archived">Arquivados</option></select></label>
+                      <span className="catalog-counter">{filteredProducts.length} de {products.length} produtos</span>
+                    </div>
+                  </div>
+                  {productSkuSearchUnavailable && <p className="sku-search-warning" role="status">Não foi possível carregar os SKUs. A busca por nome continua disponível.</p>}
+
+                  <div className="catalog-table-wrapper">
                 <table className="catalog-table">
                   <thead><tr><th>Produto</th><th>Categoria</th><th>Status</th><th>Campanha</th><th className="table-action-heading">Ações</th></tr></thead>
                   <tbody>
@@ -1246,7 +1738,7 @@ export default function AdminDashboard() {
                       const category = categories.find((item) => item.id === product.category_id);
                       return (
                         <tr key={product.id}>
-                          <td><div className="product-name-cell"><div className="product-avatar"><Smartphone size={20} /></div><div><strong>{product.name}</strong><span>{product.slug}</span></div></div></td>
+                          <td><div className="product-name-cell"><div className="product-avatar"><Smartphone size={20} /></div><div><strong>{product.name}</strong><span>{product.slug}{productSkus[product.id]?.length ? ` · SKU ${productSkus[product.id].join(", ")}` : ""}</span></div></div></td>
                           <td><span className="category-label">{category?.name || "Sem categoria"}</span></td>
                           <td><span className={`status-badge ${getStatusClass(product.status)}`}><span />{getStatusLabel(product.status)}</span></td>
                           <td><div className="campaign-cell">
@@ -1263,9 +1755,11 @@ export default function AdminDashboard() {
                         </tr>
                       );
                     })}
-                    {filteredProducts.length === 0 && <tr><td colSpan={5}><div className="empty-state"><Package size={30} /><strong>{loading ? "Carregando catálogo..." : "Nenhum produto encontrado"}</strong><span>{searchTerm ? "Tente pesquisar por outro nome, marca ou categoria." : "Cadastre seu primeiro produto para começar."}</span></div></td></tr>}
+                    {filteredProducts.length === 0 && <tr><td colSpan={5}><div className="empty-state"><Package size={30} /><strong>{loading ? "Carregando catálogo..." : "Nenhum produto encontrado"}</strong><span>{products.length === 0 ? "Cadastre seu primeiro produto para começar." : "Tente outra categoria, busca ou situação."}</span></div></td></tr>}
                   </tbody>
                 </table>
+                  </div>
+                </div>
               </div>
             </section>
           )}
@@ -1311,10 +1805,23 @@ export default function AdminDashboard() {
                                   <img src={image.storage_path} alt={image.alt_text || selectedProduct.name} />
                                   {image.is_primary && <span className="primary-image-label"><Star size={12} />Principal</span>}
                                 </div>
-                                {!image.is_primary && <button className="image-action" onClick={() => void handleSetPrimary(image)} disabled={saving}>Definir como principal</button>}
+                                <div className="image-actions">
+                                  {!image.is_primary && <button className="image-action" onClick={() => void handleSetPrimary(image)} disabled={saving || deletingImageId !== null}>Definir como principal</button>}
+                                  <button className="image-delete-action" onClick={() => void handleDeleteImage(image)} disabled={saving || deletingImageId !== null} aria-label={`Excluir foto de ${selectedProduct.name}`} title="Excluir foto permanentemente">
+                                    <Trash2 size={14} />{deletingImageId === image.id ? "Excluindo..." : "Excluir foto"}
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>
+                          {pendingImageCleanups.filter((item) => item.productId === selectedProduct.id).map((item) => (
+                            <div className="image-cleanup-pending" key={item.token}>
+                              <span>A foto saiu da galeria, mas a remoção do arquivo no Storage ainda está pendente.</span>
+                              <button className="secondary-button" onClick={() => void handleRetryImageCleanup(item)} disabled={retryingImageCleanup}>
+                                <RefreshCcw size={14} />{retryingImageCleanup ? "Tentando..." : "Tentar limpeza novamente"}
+                              </button>
+                            </div>
+                          ))}
                           {images.length === 0 && <div className="inline-empty">Nenhuma imagem cadastrada.</div>}
                         </div>
                       </article>

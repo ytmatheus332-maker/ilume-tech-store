@@ -22,6 +22,13 @@ interface ProductRow {
   badge_label: string | null;
 }
 
+interface CategoryRow {
+  id: string;
+  name: string;
+  slug: string;
+  parent_id: string | null;
+}
+
 interface VariantRow {
   id: string;
   product_id: string;
@@ -103,6 +110,7 @@ export async function getPublishedProducts(): Promise<CatalogProduct[]> {
   const [
     { data: variants, error: variantsError },
     { data: images, error: imagesError },
+    { data: categories, error: categoriesError },
   ] = await Promise.all([
     supabase
       .from("product_variants")
@@ -114,6 +122,9 @@ export async function getPublishedProducts(): Promise<CatalogProduct[]> {
       .select(IMAGE_COLUMNS)
       .in("product_id", productIds)
       .order("position", { ascending: true }),
+    supabase
+      .from("categories")
+      .select("id, name, slug, parent_id"),
   ]);
 
   if (variantsError) {
@@ -126,6 +137,28 @@ export async function getPublishedProducts(): Promise<CatalogProduct[]> {
 
   const variantRows = (variants ?? []) as unknown as VariantRow[];
   const imageRows = (images ?? []) as unknown as ImageRow[];
+  const categoryRows = categoriesError
+    ? []
+    : ((categories ?? []) as unknown as CategoryRow[]);
+  const categoriesById = new Map(
+    categoryRows.map((category) => [category.id, category])
+  );
+
+  function getCategorySlugs(categoryId: string | null): string[] {
+    const slugs: string[] = [];
+    const visited = new Set<string>();
+    let currentId = categoryId;
+
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const category = categoriesById.get(currentId);
+      if (!category) break;
+      slugs.push(category.slug || category.name);
+      currentId = category.parent_id;
+    }
+
+    return slugs;
+  }
 
   return productRows.map((product) => {
     const productVariants: CatalogVariant[] = variantRows
@@ -138,6 +171,7 @@ export async function getPublishedProducts(): Promise<CatalogProduct[]> {
 
     return {
       ...product,
+      category_slugs: getCategorySlugs(product.category_id),
       variants: productVariants,
       images: productImages,
     };
