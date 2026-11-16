@@ -641,6 +641,64 @@
   color: #111;
 }
 
+.ilume-admin .image-actions {
+  display: grid;
+  gap: 5px;
+  padding: 0 6px 6px;
+}
+
+.ilume-admin .image-actions .image-action {
+  width: 100%;
+  min-height: 32px;
+  margin: 0;
+}
+
+.ilume-admin .image-delete-action {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(224, 118, 118, .28);
+  border-radius: var(--a-radius-sm);
+  background: rgba(174, 63, 63, .08);
+  color: #e39a9a;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background .2s ease, border-color .2s ease, color .2s ease;
+}
+
+.ilume-admin .image-delete-action:hover:not(:disabled) {
+  border-color: rgba(224, 118, 118, .55);
+  background: rgba(174, 63, 63, .18);
+  color: #ffc1c1;
+}
+
+.ilume-admin .image-delete-action:disabled,
+.ilume-admin .image-action:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.ilume-admin .image-cleanup-pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(217, 167, 82, .3);
+  border-radius: var(--a-radius-sm);
+  background: rgba(217, 167, 82, .07);
+  color: var(--a-text-soft);
+  font-size: 12px;
+}
+
+.ilume-admin .image-cleanup-pending .secondary-button {
+  flex-shrink: 0;
+}
+
 
 /* =============================================================
    07. BUSCA E TABELA
@@ -1733,7 +1791,7 @@
     inset: auto;
     width: 100%;
     min-height: auto;
-    padding: 14px 14px 10px;
+    padding: calc(14px + env(safe-area-inset-top, 0px)) max(14px, env(safe-area-inset-right, 0px)) 10px max(14px, env(safe-area-inset-left, 0px));
     overflow: visible;
   }
 
@@ -1757,8 +1815,10 @@
   .ilume-admin .sidebar-navigation {
     display: flex;
     gap: 6px;
-    padding: 2px 0 7px;
+    padding: 4px 3px 9px;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-padding-inline: 8px;
     scrollbar-width: thin;
     scrollbar-color: #8d7546 transparent;
   }
@@ -1769,6 +1829,8 @@
     flex-shrink: 0;
     gap: 8px;
     padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 10px;
     font-size: 12px;
   }
 
@@ -1784,11 +1846,21 @@
 
   .ilume-admin .admin-topbar {
     position: relative;
+    gap: 10px;
     min-height: 54px;
-    padding: 0 16px;
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+  }
+
+  .ilume-admin .topbar-breadcrumb {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .ilume-admin .topbar-actions {
+    flex-shrink: 0;
     gap: 10px;
   }
 
@@ -1798,7 +1870,8 @@
   }
 
   .ilume-admin .admin-content {
-    padding: 22px 14px calc(24px + env(safe-area-inset-bottom,0px));
+    min-width: 0;
+    padding: 22px max(14px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px));
   }
 
   .ilume-admin .admin-welcome {
@@ -1887,6 +1960,12 @@
   .ilume-admin .catalog-toolbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .ilume-admin .catalog-table-wrapper {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .ilume-admin .search-box {
@@ -2007,8 +2086,8 @@
 
 @media (max-width: 380px) {
   .ilume-admin .admin-content {
-    padding-right: 10px;
-    padding-left: 10px;
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
   }
 
   .ilume-admin .stat-card {
@@ -2029,5 +2108,769 @@
 
   .ilume-admin .product-form-title h3 {
     font-size: 13px;
+  }
+}
+
+/* =============================================================
+   16. REFINAMENTO VISUAL ILUME PREMIUM
+   ============================================================= */
+
+.ilume-admin {
+  --a-bg: #111317;
+  --a-surface: #1b1e24;
+  --a-surface-2: #232730;
+  --a-surface-3: #2b3039;
+  --a-input: #14171c;
+  --a-border: #353b45;
+  --a-border-strong: #484f5b;
+  --a-text: #f5f5f5;
+  --a-text-2: #dedfe3;
+  --a-muted: #a9aeb8;
+  --a-faint: #858d99;
+  --a-accent: #c6a56a;
+  --a-accent-hover: #e2c995;
+  --a-accent-soft: rgba(198, 165, 106, 0.1);
+  --a-accent-border: rgba(198, 165, 106, 0.32);
+  --a-side-bg: linear-gradient(180deg, #090a0c 0%, #15171c 100%);
+  --a-side-border: rgba(198, 165, 106, 0.16);
+  --a-side-hover: rgba(198, 165, 106, 0.075);
+  --a-side-active: rgba(198, 165, 106, 0.11);
+  --a-side-active-border: rgba(198, 165, 106, 0.38);
+  --a-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  background: var(--a-bg);
+}
+
+.ilume-admin .admin-sidebar {
+  box-shadow: 12px 0 32px rgba(0, 0, 0, 0.16);
+}
+
+.ilume-admin .admin-brand-mark {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: linear-gradient(145deg, #d8bb80, #a48752);
+  box-shadow: 0 5px 18px rgba(198, 165, 106, 0.14);
+}
+
+.ilume-admin .sidebar-navigation {
+  gap: 7px;
+}
+
+.ilume-admin .sidebar-link {
+  min-height: 45px;
+  border-radius: 10px;
+}
+
+.ilume-admin .sidebar-link.active {
+  box-shadow: inset 2px 0 0 var(--a-accent);
+}
+
+.ilume-admin .admin-topbar {
+  background: rgba(17, 19, 23, 0.94);
+  border-bottom-color: var(--a-border);
+}
+
+.ilume-admin .admin-content {
+  scroll-padding-top: 82px;
+}
+
+.ilume-admin .admin-welcome {
+  border-color: var(--a-accent-border);
+  border-radius: 18px;
+  background:
+    radial-gradient(ellipse at 92% 0%, rgba(198, 165, 106, 0.08), transparent 34%),
+    linear-gradient(120deg, #282722 0%, #22252b 72%);
+}
+
+.ilume-admin .admin-stats {
+  gap: 14px;
+}
+
+.ilume-admin .stat-card {
+  min-height: 142px;
+  border-color: var(--a-border);
+  border-radius: 15px;
+  background: linear-gradient(145deg, #252932 0%, #1c1f25 100%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.ilume-admin .stat-card > strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.ilume-admin .catalog-section,
+.ilume-admin .management-section,
+.ilume-admin .gateway-section {
+  border-color: var(--a-border);
+  border-radius: 16px;
+  background: linear-gradient(145deg, #20232a 0%, #1a1d23 100%);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+}
+
+.ilume-admin .section-heading h2,
+.ilume-admin .management-heading h2 {
+  letter-spacing: -0.45px;
+}
+
+.ilume-admin .catalog-table-wrapper {
+  border-color: var(--a-border);
+  background: #191c22;
+  overscroll-behavior-x: contain;
+  scrollbar-color: #716044 #191c22;
+  scrollbar-width: thin;
+}
+
+.ilume-admin .catalog-table th {
+  background: #292d35;
+  color: #d8bb80;
+}
+
+.ilume-admin .catalog-table td {
+  border-top-color: rgba(255, 255, 255, 0.055);
+}
+
+.ilume-admin .catalog-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.ilume-admin .product-form-card,
+.ilume-admin .admin-panel,
+.ilume-admin .overview-card {
+  border-color: var(--a-border);
+  background: linear-gradient(145deg, #22262e 0%, #1b1e24 100%);
+}
+
+.ilume-admin .product-form-heading,
+.ilume-admin .panel-heading {
+  border-bottom-color: var(--a-border);
+  background: linear-gradient(145deg, #2a2e37, #232730);
+}
+
+.ilume-admin .form-field input,
+.ilume-admin .form-field select,
+.ilume-admin .product-form .form-field textarea {
+  border-color: var(--a-border-strong);
+  border-radius: 9px;
+  background: var(--a-input);
+}
+
+.ilume-admin .primary-button {
+  background: linear-gradient(135deg, #d8bb80, #b3945c);
+  box-shadow: 0 4px 14px rgba(198, 165, 106, 0.12);
+}
+
+.ilume-admin .primary-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #e2c995, #c6a56a);
+}
+
+.ilume-admin button:focus-visible,
+.ilume-admin input:focus-visible,
+.ilume-admin select:focus-visible,
+.ilume-admin textarea:focus-visible,
+.ilume-admin a:focus-visible {
+  outline-color: #e2c995;
+  outline-offset: 3px;
+}
+
+@media (max-width: 700px) {
+  .ilume-admin {
+    overflow-x: clip;
+  }
+
+  .ilume-admin .admin-topbar {
+    min-width: 0;
+    background: rgba(17, 19, 23, 0.98);
+  }
+
+  .ilume-admin .sidebar-navigation {
+    scroll-snap-type: x proximity;
+  }
+
+  .ilume-admin .sidebar-link {
+    min-height: 42px;
+    scroll-snap-align: start;
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  .ilume-admin .sidebar-link.active {
+    border-color: var(--a-side-active-border);
+    background: var(--a-side-active);
+    box-shadow: inset 0 -2px 0 var(--a-accent);
+  }
+
+  .ilume-admin .admin-stats {
+    gap: 10px;
+  }
+
+  .ilume-admin .stat-card {
+    min-height: 132px;
+    padding: 15px;
+  }
+
+  .ilume-admin .catalog-section,
+  .ilume-admin .management-section,
+  .ilume-admin .gateway-section {
+    padding: 18px 15px;
+  }
+
+  .ilume-admin .catalog-table-wrapper {
+    border-radius: 10px;
+  }
+
+  .ilume-admin .product-form-card {
+    border-radius: 12px;
+  }
+
+  .ilume-admin .product-form-actions button,
+  .ilume-admin .product-row-actions button {
+    min-height: 42px;
+  }
+}
+
+@media (max-width: 380px) {
+  .ilume-admin .admin-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ilume-admin .stat-card {
+    min-height: 118px;
+  }
+
+  .ilume-admin .admin-welcome {
+    padding: 16px 14px;
+  }
+
+  .ilume-admin .admin-welcome h1 {
+    font-size: 23px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ilume-admin .stat-card:hover,
+  .ilume-admin .primary-button:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* Agrupamento da navegação e análises com dados reais */
+.ilume-admin .sidebar-navigation {
+  gap: 16px;
+}
+
+.ilume-admin .sidebar-nav-group {
+  display: grid;
+  gap: 5px;
+}
+
+.ilume-admin .sidebar-group-label {
+  padding: 0 10px 2px;
+  color: #858c99;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.ilume-admin .sidebar-link {
+  font-size: 12px;
+}
+
+.ilume-admin .admin-commerce-stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ilume-admin .dashboard-analytics-error {
+  margin: -10px 0 24px;
+  color: #e0b976;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ilume-admin .dashboard-charts-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, .85fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.ilume-admin .dashboard-charts-grid--secondary {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ilume-admin .dashboard-chart-card {
+  min-width: 0;
+  min-height: 310px;
+}
+
+.ilume-admin .dashboard-chart-card .overview-card-head {
+  align-items: flex-start;
+}
+
+.ilume-admin .dashboard-chart-card .overview-card-head h2 {
+  margin: 0;
+}
+
+.ilume-admin .dashboard-chart-card .overview-card-head p {
+  margin: 5px 0 0;
+  color: var(--a-muted);
+  font-size: 11px;
+}
+
+.ilume-admin .dashboard-chart-period {
+  flex-shrink: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--a-accent-border);
+  border-radius: 20px;
+  color: var(--a-accent);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .8px;
+}
+
+.ilume-admin .sales-chart-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.ilume-admin .sales-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.ilume-admin .sales-chart-gridline {
+  stroke: rgba(202, 208, 218, .1);
+  stroke-dasharray: 3 5;
+  stroke-width: 1;
+}
+
+.ilume-admin .sales-chart-area {
+  fill: rgba(213, 179, 106, .09);
+}
+
+.ilume-admin .sales-chart-line {
+  fill: none;
+  stroke: #d5b36a;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+
+.ilume-admin .sales-chart-point {
+  fill: #e8d099;
+  stroke: #262a32;
+  stroke-width: 2;
+}
+
+.ilume-admin .sales-chart-label {
+  fill: #a9afba;
+  font-size: 9px;
+  text-anchor: middle;
+  text-transform: capitalize;
+}
+
+.ilume-admin .sales-chart-empty-note {
+  position: absolute;
+  inset: 40% 10% auto;
+  color: #a9afba;
+  font-size: 11px;
+  text-align: center;
+}
+
+.ilume-admin .dashboard-chart-message {
+  display: grid;
+  min-height: 190px;
+  place-content: center;
+  padding: 24px;
+  color: var(--a-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.ilume-admin .status-chart-layout {
+  display: grid;
+  grid-template-columns: minmax(105px, 142px) minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  padding-top: 22px;
+}
+
+.ilume-admin .status-donut {
+  width: 100%;
+  overflow: visible;
+}
+
+.ilume-admin .status-donut-track {
+  fill: none;
+  stroke: #414752;
+  stroke-width: 13;
+}
+
+.ilume-admin .status-donut circle:not(.status-donut-track) {
+  transition: stroke-dasharray .25s ease;
+}
+
+.ilume-admin .status-donut-total {
+  fill: var(--a-text);
+  font-size: 20px;
+  font-weight: 750;
+  text-anchor: middle;
+}
+
+.ilume-admin .status-donut-caption {
+  fill: var(--a-muted);
+  font-size: 8px;
+  text-anchor: middle;
+}
+
+.ilume-admin .status-chart-legend {
+  display: grid;
+  gap: 13px;
+}
+
+.ilume-admin .status-chart-legend > div {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--a-muted);
+  font-size: 10px;
+}
+
+.ilume-admin .status-chart-legend > div > span:first-child {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.ilume-admin .status-chart-legend strong {
+  color: var(--a-text-2);
+  font-size: 11px;
+}
+
+.ilume-admin .category-chart-list {
+  display: grid;
+  gap: 17px;
+  padding-top: 5px;
+}
+
+.ilume-admin .category-chart-row {
+  display: grid;
+  grid-template-columns: minmax(110px, .8fr) minmax(0, 2fr) 30px;
+  align-items: center;
+  gap: 12px;
+  color: var(--a-muted);
+  font-size: 11px;
+}
+
+.ilume-admin .category-chart-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ilume-admin .category-chart-row > div {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #414752;
+}
+
+.ilume-admin .category-chart-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #907443, #d5b36a);
+}
+
+.ilume-admin .category-chart-row strong {
+  color: var(--a-text-2);
+  font-size: 11px;
+  text-align: right;
+}
+
+@media (max-width: 1100px) {
+  .ilume-admin .dashboard-charts-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ilume-admin .dashboard-chart-card {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .ilume-admin .sidebar-navigation {
+    gap: 6px;
+  }
+
+  .ilume-admin .sidebar-nav-group {
+    display: contents;
+  }
+
+  .ilume-admin .sidebar-group-label {
+    display: none;
+  }
+
+  .ilume-admin .sidebar-link {
+    max-width: 220px;
+  }
+
+  .ilume-admin .status-chart-layout {
+    grid-template-columns: minmax(100px, 132px) minmax(0, 1fr);
+  }
+
+  .ilume-admin .category-chart-row {
+    grid-template-columns: minmax(90px, .8fr) minmax(0, 2fr) 26px;
+    gap: 8px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 380px) {
+  .ilume-admin .admin-commerce-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ilume-admin .status-chart-layout {
+    grid-template-columns: minmax(90px, 112px) minmax(0, 1fr);
+    gap: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ilume-admin .status-donut circle:not(.status-donut-track) {
+    transition: none;
+  }
+}
+
+/* Navegação hierárquica da lista de produtos */
+.ilume-admin .catalog-browser {
+  display: grid;
+  grid-template-columns: minmax(205px, 250px) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.ilume-admin .category-filter-panel {
+  min-width: 0;
+  padding: 16px 11px 11px;
+  border: 1px solid var(--a-border);
+  border-radius: 13px;
+  background: linear-gradient(155deg, #252a33, #20242c);
+}
+
+.ilume-admin .category-filter-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 8px 13px;
+  border-bottom: 1px solid var(--a-border);
+}
+
+.ilume-admin .category-filter-heading .eyebrow {
+  margin: 0 0 3px;
+  font-size: 8px;
+}
+
+.ilume-admin .category-filter-heading strong {
+  color: var(--a-text);
+  font-size: 14px;
+}
+
+.ilume-admin .category-filter-heading > span {
+  display: grid;
+  min-width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 1px solid var(--a-border);
+  border-radius: 20px;
+  color: var(--a-muted);
+  font-size: 10px;
+}
+
+.ilume-admin .category-filter-list {
+  display: grid;
+  max-height: min(58vh, 560px);
+  gap: 3px;
+  margin-top: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #6e5a38 transparent;
+  scrollbar-width: thin;
+}
+
+.ilume-admin .category-filter-option {
+  display: flex;
+  min-width: 0;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--a-muted);
+  font-size: 11px;
+  text-align: left;
+  transition: background .16s ease, border-color .16s ease, color .16s ease;
+}
+
+.ilume-admin .category-filter-option > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ilume-admin .category-filter-option > span i {
+  margin-right: 6px;
+  color: #858c99;
+  font-style: normal;
+}
+
+.ilume-admin .category-filter-option > em {
+  min-width: 22px;
+  flex-shrink: 0;
+  color: #9198a4;
+  font-size: 10px;
+  font-style: normal;
+  text-align: right;
+}
+
+.ilume-admin .category-filter-option:hover {
+  border-color: rgba(213, 179, 106, .2);
+  background: rgba(213, 179, 106, .06);
+  color: var(--a-text);
+}
+
+.ilume-admin .category-filter-option.is-selected {
+  border-color: var(--a-side-active-border);
+  background: var(--a-side-active);
+  box-shadow: inset 2px 0 0 var(--a-accent);
+  color: #f1d798;
+}
+
+.ilume-admin .category-filter-option.is-selected > em {
+  color: #e4c578;
+}
+
+.ilume-admin .category-filter-option:focus-visible,
+.ilume-admin .catalog-status-filter select:focus-visible {
+  outline: 2px solid var(--a-accent);
+  outline-offset: 2px;
+}
+
+.ilume-admin .catalog-browser-main {
+  min-width: 0;
+}
+
+.ilume-admin .catalog-browser-main .catalog-toolbar {
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.ilume-admin .catalog-browser-main .search-box {
+  width: min(100%, 430px);
+  flex: 1 1 250px;
+}
+
+.ilume-admin .catalog-toolbar-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  gap: 13px;
+}
+
+.ilume-admin .catalog-status-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--a-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.ilume-admin .catalog-status-filter select {
+  min-width: 132px;
+  min-height: 40px;
+  padding: 0 30px 0 11px;
+  border: 1px solid var(--a-border-strong);
+  border-radius: var(--a-radius-sm);
+  background: var(--a-input);
+  color: var(--a-text);
+  font-size: 11px;
+}
+
+.ilume-admin .sku-search-warning {
+  margin: -6px 0 14px;
+  color: var(--a-amber);
+  font-size: 11px;
+}
+
+@media (max-width: 1000px) {
+  .ilume-admin .catalog-browser {
+    grid-template-columns: minmax(175px, 210px) minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .ilume-admin .catalog-browser-main .search-box {
+    flex-basis: 100%;
+  }
+
+  .ilume-admin .catalog-toolbar-controls {
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 700px) {
+  .ilume-admin .catalog-browser {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ilume-admin .category-filter-panel {
+    padding: 11px;
+  }
+
+  .ilume-admin .category-filter-list {
+    max-height: 190px;
+  }
+
+  .ilume-admin .catalog-browser-main .catalog-toolbar {
+    align-items: stretch;
+  }
+
+  .ilume-admin .catalog-browser-main .search-box {
+    flex-basis: 100%;
+  }
+
+  .ilume-admin .catalog-toolbar-controls {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 380px) {
+  .ilume-admin .catalog-toolbar-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ilume-admin .catalog-status-filter {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ilume-admin .catalog-status-filter select {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ilume-admin .category-filter-option {
+    transition: none;
   }
 }

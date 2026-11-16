@@ -26,6 +26,7 @@ export interface CatalogCategory {
 export interface CatalogProduct {
   id: string;
   category_id: string | null;
+  category_slugs: string[];
   name: string;
   slug: string;
   brand: string | null;

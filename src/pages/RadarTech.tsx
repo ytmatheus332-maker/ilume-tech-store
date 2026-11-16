@@ -114,16 +114,42 @@ export default function RadarTech() {
     <main className="radar-page">
       <header className="radar-header">
         <div className="radar-header-inner">
-          <span className="radar-eyebrow">ILUME TECH JOURNAL</span>
+          <div className="radar-intro">
+            <span className="radar-eyebrow">ILUME TECH JOURNAL</span>
 
-          <h1>
-            Radar <span>Tech.</span>
-          </h1>
+            <h1>
+              Radar <span>Tech.</span>
+            </h1>
 
-          <p>
-            O universo Apple, acompanhado de perto.
-            Notícias, novidades e inovação em um só lugar.
-          </p>
+            <p>
+              O universo Apple, acompanhado de perto.
+              Notícias, novidades e inovação em um só lugar.
+            </p>
+          </div>
+
+          <div className="radar-visual" aria-hidden="true">
+            <div className="radar-visual-topline">
+              <span><i /> SINAL ATIVO</span>
+              <span>ILUME / 01</span>
+            </div>
+            <div className="radar-scope">
+              <span className="radar-crosshair radar-crosshair--horizontal" />
+              <span className="radar-crosshair radar-crosshair--vertical" />
+              <span className="radar-ring radar-ring--outer" />
+              <span className="radar-ring radar-ring--middle" />
+              <span className="radar-ring radar-ring--inner" />
+              <span className="radar-sweep" />
+              <span className="radar-signal radar-signal--one" />
+              <span className="radar-signal radar-signal--two" />
+              <span className="radar-signal radar-signal--three" />
+              <span className="radar-signal radar-signal--four" />
+              <span className="radar-scope-core" />
+            </div>
+            <div className="radar-visual-bottomline">
+              <span>MONITORAMENTO CONTÍNUO</span>
+              <span>360° <b>·</b> TECH</span>
+            </div>
+          </div>
 
           <div className="radar-header-bottom">
             <span>APPLE · TECNOLOGIA · INOVAÇÃO</span>
