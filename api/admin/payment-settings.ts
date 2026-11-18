@@ -14,7 +14,7 @@ const publicKey =
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   "";
 
-type Gateway = "mercadopago" | "bravopay";
+type Gateway = "mercadopago" | "bravopay" | "revantpay";
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Content-Type", "application/json");
@@ -132,10 +132,17 @@ export default async function handler(req: any, res: any) {
 
     if (
       gateway !== "mercadopago" &&
-      gateway !== "bravopay"
+      gateway !== "bravopay" &&
+      gateway !== "revantpay"
     ) {
       return res.status(400).json({
         error: "Gateway inválido.",
+      });
+    }
+
+    if (gateway === "revantpay" && !process.env.REVANTPAY_API_KEY?.trim()) {
+      return res.status(503).json({
+        error: "A Revant Pay precisa ter a chave configurada no servidor antes da ativação.",
       });
     }
 
