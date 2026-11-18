@@ -10,7 +10,7 @@ import {
 
 import { supabase } from "../../lib/supabase";
 
-type GatewayType = "mercadopago" | "bravopay";
+type GatewayType = "mercadopago" | "bravopay" | "revantpay";
 
 interface GatewaySettingsResponse {
   active_gateway?: GatewayType;
@@ -39,6 +39,12 @@ const GATEWAYS: {
     name: "BravoPay",
     description:
       "Segundo provedor de pagamentos. A integração deve estar operacional no servidor antes da ativação.",
+  },
+  {
+    id: "revantpay",
+    name: "Revant Pay",
+    description:
+      "Checkout hospedado pela Revant Pay. A confirmação automática de pagamentos está pendente.",
   },
 ];
 
@@ -119,7 +125,8 @@ export default function GatewaySettings() {
 
       if (
         gateway !== "mercadopago" &&
-        gateway !== "bravopay"
+        gateway !== "bravopay" &&
+        gateway !== "revantpay"
       ) {
         throw new Error(
           "O servidor não retornou um gateway válido."
@@ -152,7 +159,10 @@ export default function GatewaySettings() {
     const confirmed = window.confirm(
       `Deseja realmente ativar o ${selectedName}?\n\n` +
         "Essa alteração define qual gateway será utilizado para novos pagamentos. " +
-        "Pagamentos e pedidos já criados não devem ser alterados."
+        "Pagamentos e pedidos já criados não devem ser alterados." +
+        (selectedGateway === "revantpay"
+          ? "\n\nOs pedidos da Revant Pay ficarão pendentes na ILUME até que a confirmação automática seja integrada."
+          : "")
     );
 
     if (!confirmed) {
@@ -188,7 +198,8 @@ export default function GatewaySettings() {
 
       if (
         returnedGateway !== "mercadopago" &&
-        returnedGateway !== "bravopay"
+        returnedGateway !== "bravopay" &&
+        returnedGateway !== "revantpay"
       ) {
         throw new Error(
           "O servidor não confirmou qual gateway foi salvo. Atualize a página e confira a configuração."

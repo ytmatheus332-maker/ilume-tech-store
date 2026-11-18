@@ -1,5 +1,12 @@
 
-import { createClient } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  createRevantPayRecoveryCookie,
+  getRevantPayCheckoutSession,
+  hasRevantPayRecoveryProof,
+  isTerminalRevantPayOrder
+} from "../server/payments/revantpay.ts";
 
 const BRAVOPAY_URL = "https://bravopay.club/api/v1";
 const DEFAULT_STORE_URL = "https://ilume-tech-store.vercel.app";
@@ -12,7 +19,8 @@ const CHECKOUT_FUNCTION_TIMEOUT_MS = 30_000;
 const FINALIZATION_RESERVE_MS = 1_500;
 const BRAVO_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
-type Gateway = "mercadopago" | "bravopay";
+type Gateway = "mercadopago" | "bravopay" | "revantpay";
+const GATEWAYS: readonly Gateway[] = ["mercadopago", "bravopay", "revantpay"];
 
 interface CheckoutItem {
   variantId: string;
@@ -578,6 +586,29 @@ function pendingPayment(
   });
 }
 
+function findCheckoutOrder(supabase: SupabaseClient, checkoutRequestId: string) {
+  return supabase
+    .from("orders")
+    .select("id, gateway, status, checkout_request_id, customer_name, customer_email, customer_phone")
+    .eq("checkout_request_id", checkoutRequestId)
+    .maybeSingle();
+}
+
+function terminalRevantPayOrder(res: any, orderId: string) {
+  return res.status(409).json({
+    success: false,
+    gateway: "revantpay",
+    state: "terminal",
+    terminal: true,
+    orderId,
+    error: "Esta tentativa foi encerrada. Você pode iniciar uma nova compra."
+  });
+}
+
+function checkoutTraceId(requestId: string): string {
+  return createHash("sha256").update(requestId).digest("hex").slice(0, 24);
+}
+
 function returnStoredBravoOrderStatus(res: any, order: any) {
   const knownStatuses: Record<string, string> = {
     approved: "PAID",
@@ -646,7 +677,7 @@ export default async function handler(req: any, res: any) {
 
   async function runStep<T>(
     step: string,
-    action: () => Promise<T>
+    action: () => PromiseLike<T>
   ): Promise<T> {
     const startedAt = Date.now();
 
@@ -713,6 +744,41 @@ export default async function handler(req: any, res: any) {
     }
   );
 
+  const storeUrl = (
+    process.env.STORE_URL || DEFAULT_STORE_URL
+  ).replace(/\/$/, "");
+
+  async function returnRevantPaySession(
+    order: { id: string; checkout_request_id: string },
+    session: { id: string; url: string }
+  ) {
+    const { data: currentOrder, error } = await runStep("revantpay_session_recheck", () =>
+      supabase
+        .from("orders")
+        .select("status, preference_id")
+        .eq("id", order.id)
+        .eq("checkout_request_id", order.checkout_request_id)
+        .eq("gateway", "revantpay")
+        .maybeSingle()
+    ).catch(() => ({ data: null, error: true }));
+
+    if (!error && isTerminalRevantPayOrder(currentOrder?.status)) {
+      return terminalRevantPayOrder(res, order.id);
+    }
+
+    if (error || currentOrder?.status !== "pending" || currentOrder.preference_id !== session.id) {
+      return pendingPayment(res, order.id, "Ainda não foi possível confirmar o link da Revant Pay.");
+    }
+
+    return res.status(200).json({
+      success: true,
+      gateway: "revantpay",
+      ...(req.method === "GET" ? { state: "hosted_checkout" } : {}),
+      orderId: order.id,
+      paymentUrl: session.url
+    });
+  }
+
   try {
     // =====================================================
     // 1. GET: CONSULTAR GATEWAY ATIVO
@@ -731,7 +797,7 @@ export default async function handler(req: any, res: any) {
           });
         }
 
-        traceId = statusCheckoutRequestId;
+        traceId = checkoutTraceId(statusCheckoutRequestId);
         trace("payment_status_started");
 
         const { data: order, error: orderError } = await runStep(
@@ -739,7 +805,7 @@ export default async function handler(req: any, res: any) {
           () =>
             supabase
               .from("orders")
-              .select("id, checkout_request_id, total_amount_cents, status, gateway, gateway_payment_id")
+              .select("id, checkout_request_id, total_amount_cents, status, gateway, gateway_payment_id, preference_id, created_at")
               .eq("checkout_request_id", statusCheckoutRequestId)
               .maybeSingle()
         );
@@ -759,6 +825,41 @@ export default async function handler(req: any, res: any) {
         }
 
         orderId = order.id;
+
+        if (order.gateway === "revantpay") {
+          if (!hasRevantPayRecoveryProof(req.headers?.cookie, order, supabaseServiceKey)) {
+            return res.status(403).json({
+              success: false,
+              gateway: "revantpay",
+              state: "recovery_required"
+            });
+          }
+
+          if (isTerminalRevantPayOrder(order.status)) {
+            return terminalRevantPayOrder(res, order.id);
+          }
+
+          if (order.status !== "pending") {
+            return pendingPayment(res, order.id, "Esta tentativa ainda está em processamento.");
+          }
+
+          const apiKey = process.env.REVANTPAY_API_KEY?.trim();
+          const session = apiKey && typeof order.preference_id === "string" && order.preference_id.trim()
+            ? await runStep("payment_status_revantpay_lookup", () =>
+                getRevantPayCheckoutSession(order, storeUrl, apiKey, "lookup")
+              ).catch(() => null)
+            : null;
+
+          if (!session) {
+            return pendingPayment(
+              res,
+              order.id,
+              "Ainda não foi possível recuperar o link de pagamento da Revant Pay."
+            );
+          }
+
+          return returnRevantPaySession(order, session);
+        }
 
         if (order.gateway !== "bravopay") {
           return res.status(409).json({
@@ -924,20 +1025,34 @@ export default async function handler(req: any, res: any) {
       }
 
       if (
-        !["mercadopago", "bravopay"].includes(data.active_gateway)
+        !GATEWAYS.includes(data.active_gateway)
       ) {
         return res.status(500).json({
           error: "Gateway de pagamento inválido."
         });
       }
 
-      trace("request_completed", {
-        gateway: data.active_gateway
-      });
+      let gateway = data.active_gateway;
+      const gatewayRequestId = req.headers?.["x-checkout-gateway-request-id"];
+      if (isValidUUID(gatewayRequestId)) {
+        const { data: savedOrder } = await supabase
+          .from("orders")
+          .select("gateway")
+          .eq("checkout_request_id", gatewayRequestId)
+          .maybeSingle();
+        if (
+          savedOrder && GATEWAYS.includes(savedOrder.gateway) &&
+          (gateway === "revantpay" || savedOrder.gateway === "revantpay")
+        ) {
+          gateway = savedOrder.gateway;
+        }
+      }
+
+      trace("request_completed", { gateway });
 
       return res.status(200).json({
         success: true,
-        gateway: data.active_gateway
+        gateway
       });
     }
 
@@ -958,7 +1073,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    traceId = checkoutRequestId;
+    traceId = checkoutTraceId(checkoutRequestId);
 
     trace("request_validating");
 
@@ -1006,7 +1121,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // =====================================================
-    // 3. CONSULTAR GATEWAY E VARIANTES EM PARALELO
+    // 3. CONSULTAR CONFIGURAÇÃO, VARIANTES E VÍNCULO DO PEDIDO
     // =====================================================
 
     const quantities = new Map<string, number>();
@@ -1043,7 +1158,8 @@ export default async function handler(req: any, res: any) {
 
     const [
       { data: paymentSettings, error: settingsError },
-      { data: variants, error: variantsError }
+      { data: variants, error: variantsError },
+      { data: savedOrder }
     ] = await Promise.all([
       runStep("payment_settings", () =>
         supabase
@@ -1065,7 +1181,8 @@ export default async function handler(req: any, res: any) {
             is_active
           `)
           .in("id", variantIds)
-      )
+      ),
+      runStep("checkout_gateway_lookup", () => findCheckoutOrder(supabase, checkoutRequestId))
     ]);
 
     if (settingsError || !paymentSettings) {
@@ -1082,13 +1199,34 @@ export default async function handler(req: any, res: any) {
     const configuredGateway =
       paymentSettings.active_gateway as Gateway;
 
-    if (!["mercadopago", "bravopay"].includes(configuredGateway)) {
+    if (!GATEWAYS.includes(configuredGateway)) {
       return res.status(500).json({
         error: "Gateway de pagamento inválido."
       });
     }
 
-    if (configuredGateway === "bravopay") {
+    const matchesCustomer = (order: {
+      customer_email: string;
+      customer_name: string;
+      customer_phone: string | null;
+    }) => order.customer_email === customerEmail && order.customer_name === customerName &&
+      (order.customer_phone || "") === (customerPhone || "");
+
+    if (
+      savedOrder?.gateway === "revantpay" && isTerminalRevantPayOrder(savedOrder.status) &&
+      (matchesCustomer(savedOrder) || hasRevantPayRecoveryProof(req.headers?.cookie, savedOrder, supabaseServiceKey))
+    ) {
+      return terminalRevantPayOrder(res, savedOrder.id);
+    }
+
+    // Preserve the prechecks of the original gateway on a Revant Pay transition.
+    const validationGateway =
+      savedOrder && GATEWAYS.includes(savedOrder.gateway) &&
+      (configuredGateway === "revantpay" || savedOrder.gateway === "revantpay")
+        ? savedOrder.gateway
+        : configuredGateway;
+
+    if (validationGateway === "bravopay") {
       if (customerPhone.length < 10 || customerPhone.length > 13) {
         return res.status(400).json({
           error: "Informe um telefone válido com DDD."
@@ -1111,7 +1249,7 @@ export default async function handler(req: any, res: any) {
     }
 
     if (
-      configuredGateway === "mercadopago" &&
+      validationGateway === "mercadopago" &&
       !process.env.MP_ACCESS_TOKEN
     ) {
       console.error("CHECKOUT: MP_ACCESS_TOKEN ausente.");
@@ -1212,7 +1350,13 @@ export default async function handler(req: any, res: any) {
       totalCents
     });
 
-    if (configuredGateway === "bravopay" && totalCents < 500) {
+    if (validationGateway === "revantpay" && !process.env.REVANTPAY_API_KEY?.trim()) {
+      return res.status(503).json({
+        error: "A configuração da Revant Pay está incompleta."
+      });
+    }
+
+    if (validationGateway === "bravopay" && totalCents < 500) {
       return res.status(400).json({
         error: "O valor mínimo para gerar um PIX é R$ 5,00."
       });
@@ -1225,33 +1369,35 @@ export default async function handler(req: any, res: any) {
     let order: any = null;
     let newlyCreated = false;
 
-    const {
-      data: insertedOrder,
-      error: orderInsertError
-    } = await runStep(
-      "order_insert",
-      () =>
-        supabase
-          .from("orders")
-          .insert([{
-            checkout_request_id: checkoutRequestId,
-            customer_name: customerName,
-            customer_email: customerEmail,
-            customer_phone: customerPhone || null,
-            total_amount_cents: totalCents,
-            status: "pending",
-            gateway: configuredGateway
-          }])
-          .select()
-          .single()
-    );
+    const recoverKnownOrder = savedOrder &&
+      (configuredGateway === "revantpay" || savedOrder.gateway === "revantpay");
+    const isNewRevantAttempt = configuredGateway === "revantpay" && !savedOrder;
+    const orderData = {
+      checkout_request_id: checkoutRequestId,
+      customer_name: customerName,
+      customer_email: customerEmail,
+      customer_phone: customerPhone || null,
+      total_amount_cents: totalCents,
+      status: "pending",
+      gateway: configuredGateway
+    };
+
+    const { data: insertedOrder, error: orderInsertError } = recoverKnownOrder
+      ? { data: null, error: null }
+      : await runStep("order_insert", () => {
+          const orders = supabase.from("orders");
+          return isNewRevantAttempt
+            ? orders.upsert(orderData, { onConflict: "checkout_request_id", ignoreDuplicates: true })
+                .select().maybeSingle()
+            : orders.insert([orderData]).select().single();
+        });
 
     if (!orderInsertError && insertedOrder) {
       order = insertedOrder;
       newlyCreated = true;
 
       trace("order_created");
-    } else if (orderInsertError?.code === "23505") {
+    } else if (recoverKnownOrder || (isNewRevantAttempt && !orderInsertError) || orderInsertError?.code === "23505") {
       const {
         data: existingOrder,
         error: existingOrderError
@@ -1299,17 +1445,21 @@ export default async function handler(req: any, res: any) {
     const orderGateway = order.gateway as Gateway;
 
     if (
-      !["mercadopago", "bravopay"].includes(orderGateway) ||
-      order.customer_email !== customerEmail ||
-      order.customer_name !== customerName ||
-      Number(order.total_amount_cents) !== totalCents ||
-      (order.customer_phone || "") !== (customerPhone || "")
+      !GATEWAYS.includes(orderGateway) ||
+      !matchesCustomer(order) ||
+      Number(order.total_amount_cents) !== totalCents
     ) {
       trace("order_validation_failed");
 
       return res.status(409).json({
         error: "Esta tentativa continua vinculada a um pedido anterior. Use os mesmos dados e itens para recuperar a cobrança; não inicie outra compra enquanto o resultado estiver em verificação."
       });
+    }
+
+    if (orderGateway === "revantpay" && order.status !== "pending") {
+      return isTerminalRevantPayOrder(order.status)
+        ? terminalRevantPayOrder(res, order.id)
+        : pendingPayment(res, order.id, "Esta tentativa ainda está em processamento.");
     }
 
     if (
@@ -1440,9 +1590,45 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    const storeUrl = (
-      process.env.STORE_URL || DEFAULT_STORE_URL
-    ).replace(/\/$/, "");
+    if (orderGateway === "revantpay") {
+      const apiKey = process.env.REVANTPAY_API_KEY?.trim();
+      if (!apiKey) {
+        return res.status(503).json({
+          error: "A configuração da Revant Pay está incompleta."
+        });
+      }
+
+      res.setHeader("Set-Cookie", createRevantPayRecoveryCookie(order, supabaseServiceKey));
+
+      const pendingMessage =
+        "Não foi possível recuperar o link da Revant Pay. A tentativa deste pedido foi preservada.";
+      const session = await runStep(
+        order.preference_id != null ? "revantpay_session_lookup" : "revantpay_session_create",
+        () => getRevantPayCheckoutSession(order, storeUrl, apiKey)
+      ).catch(() => null);
+      if (!session) return pendingPayment(res, order.id, pendingMessage);
+
+      if (order.preference_id == null) {
+        const { data: savedSession, error: saveError } = await runStep(
+          "revantpay_session_save",
+          () => supabase
+            .from("orders")
+            .update({ preference_id: session.id })
+            .eq("id", order.id)
+            .eq("gateway", "revantpay")
+            .eq("status", "pending")
+            .is("preference_id", null)
+            .select("id")
+            .maybeSingle()
+        );
+
+        if (saveError || !savedSession) {
+          return pendingPayment(res, order.id, pendingMessage);
+        }
+      }
+
+      return returnRevantPaySession(order, session);
+    }
 
     // =====================================================
     // 9. MERCADO PAGO

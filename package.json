@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --experimental-strip-types --experimental-loader ./tests/checkout/mock-supabase-loader.mjs --test ./tests/checkout/create-checkout.test.mjs",
+    "test": "node --experimental-strip-types --experimental-loader ./tests/checkout/mock-supabase-loader.mjs --test ./tests/checkout/create-checkout.test.mjs ./tests/checkout/revantpay.test.mjs ./tests/security/paymentGatewayCredentials.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

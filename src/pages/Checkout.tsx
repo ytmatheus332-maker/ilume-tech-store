@@ -1,6 +1,6 @@
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   Lock,
@@ -15,9 +15,15 @@ import {
 import * as QRCode from "qrcode";
 
 import { useCart } from "../context/CartContext";
+import {
+  CHECKOUT_REQUEST_KEY,
+  isCheckoutRequestId as isValidUUID,
+  releaseRevantCheckoutAttempt,
+  reserveRevantCheckoutAttempt,
+} from "../utils/revantCheckoutAttempt";
 import "./Checkout.css";
 
-type Gateway = "mercadopago" | "bravopay";
+type Gateway = "mercadopago" | "bravopay" | "revantpay";
 
 interface CheckoutCustomer {
   name: string;
@@ -52,19 +58,10 @@ interface AddressTestResult {
   orderId: string;
 }
 
-const CHECKOUT_REQUEST_KEY = "ilume_checkout_request_id";
-
 let memoryCheckoutRequestId: string | null = null;
 
 function createCheckoutRequestId(): string {
   return crypto.randomUUID();
-}
-
-function isValidUUID(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
-  );
 }
 
 function readCheckoutRequestId(
@@ -174,6 +171,24 @@ function clearCheckoutRequestId(): void {
   }
 }
 
+async function clearRevantCheckoutRequestId(requestId: string): Promise<void> {
+  if (memoryCheckoutRequestId === requestId) memoryCheckoutRequestId = null;
+
+  try {
+    await releaseRevantCheckoutAttempt(localStorage, navigator.locks, requestId);
+  } catch {
+    // O armazenamento da sessão ainda pode estar disponível.
+  }
+
+  try {
+    if (readCheckoutRequestId(sessionStorage, true) === requestId) {
+      sessionStorage.removeItem(CHECKOUT_REQUEST_KEY);
+    }
+  } catch {
+    // A chave poderá ser descartada ao encerrar a sessão.
+  }
+}
+
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -195,6 +210,9 @@ function formatExpiration(value: string | null): string {
 
 export default function Checkout() {
   const { cart, clearCart, total } = useCart();
+  const [searchParams] = useSearchParams();
+  const revantReturn = searchParams.get("revantpay");
+  const isRevantReturn = revantReturn === "retorno" || revantReturn === "cancelado";
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -215,11 +233,13 @@ export default function Checkout() {
 
   const [gateway, setGateway] = useState<Gateway | null>(null);
   const [gatewayLoading, setGatewayLoading] = useState(true);
+  const [gatewayRevision, setGatewayRevision] = useState(0);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [pixPayment, setPixPayment] = useState<PixPayment | null>(null);
+  const [revantPaymentUrl, setRevantPaymentUrl] = useState<string | null>(null);
   const [addressTestResult, setAddressTestResult] =
     useState<AddressTestResult | null>(null);
 
@@ -230,6 +250,8 @@ export default function Checkout() {
   const [recoveryPending, setRecoveryPending] = useState(false);
 
   useEffect(() => {
+    if (isRevantReturn) return;
+
     let active = true;
 
     async function loadGateway() {
@@ -237,9 +259,13 @@ export default function Checkout() {
         setGatewayLoading(true);
         setError(null);
 
+        const savedRequestId = getStoredCheckoutRequestId();
         const response = await fetch("/api/create-checkout", {
           method: "GET",
           cache: "no-store",
+          headers: savedRequestId
+            ? { "X-Checkout-Gateway-Request-Id": savedRequestId }
+            : undefined,
         });
 
         const data = await response.json().catch(() => null);
@@ -252,7 +278,8 @@ export default function Checkout() {
 
         if (
           data.gateway !== "mercadopago" &&
-          data.gateway !== "bravopay"
+          data.gateway !== "bravopay" &&
+          data.gateway !== "revantpay"
         ) {
           throw new Error("O meio de pagamento configurado é inválido.");
         }
@@ -280,7 +307,7 @@ export default function Checkout() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isRevantReturn, gatewayRevision]);
 
   useEffect(() => {
     const savedRequestId = getStoredCheckoutRequestId();
@@ -289,7 +316,7 @@ export default function Checkout() {
 
   useEffect(() => {
     // Uma confirmação do modo de teste nunca deve consultar gateways.
-    if (addressTestResult) return;
+    if (addressTestResult || isRevantReturn) return;
 
     const currentPixStatus = String(pixPayment?.status || "").toUpperCase();
     const isCurrentPaymentPending =
@@ -326,6 +353,38 @@ export default function Checkout() {
         if (data?.state === "not_found") {
           setRecoveryPending(false);
           setRecoveryRequestId(null);
+          return;
+        }
+
+        if (
+          response.ok &&
+          data?.success === true &&
+          data.gateway === "revantpay" &&
+          data.state === "hosted_checkout" &&
+          typeof data.paymentUrl === "string" &&
+          data.paymentUrl
+        ) {
+          setRevantPaymentUrl(data.paymentUrl);
+          setRecoveryPending(false);
+          setRecoveryRequestId(null);
+          setError(null);
+          return;
+        }
+
+        if (data?.gateway === "revantpay" && data.terminal === true && data.state === "terminal") {
+          await clearRevantCheckoutRequestId(requestId);
+          if (!active) return;
+          setRevantPaymentUrl(null);
+          setRecoveryPending(false);
+          setRecoveryRequestId(null);
+          setGatewayRevision((revision) => revision + 1);
+          return;
+        }
+
+        if (data?.gateway === "revantpay" && data.state === "recovery_required") {
+          setRecoveryPending(false);
+          setRecoveryRequestId(null);
+          setError("Preencha os dados do pedido original para recuperar o pagamento na Revant Pay.");
           return;
         }
 
@@ -386,7 +445,7 @@ export default function Checkout() {
       active = false;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [recoveryRequestId, pixPayment?.status, addressTestResult]);
+  }, [recoveryRequestId, pixPayment?.status, addressTestResult, isRevantReturn]);
 
   async function handleFinishCheckout(
     event: FormEvent<HTMLFormElement>
@@ -465,7 +524,9 @@ export default function Checkout() {
         reference: reference.trim()
       };
 
-      const checkoutRequestId = getCheckoutRequestId();
+      const checkoutRequestId = gateway === "revantpay"
+        ? await reserveRevantCheckoutAttempt(localStorage, navigator.locks, getStoredCheckoutRequestId)
+        : getCheckoutRequestId();
       submittedCheckoutRequestId = checkoutRequestId;
 
       const itemsPayload = cart.map((item) => ({
@@ -491,7 +552,12 @@ export default function Checkout() {
       // Resposta inconclusiva: preservar a chave para retry.
       if (!response.ok || !data?.success) {
         if (data?.terminal === true) {
-          clearCheckoutRequestId();
+          if (data.gateway === "revantpay") {
+            await clearRevantCheckoutRequestId(checkoutRequestId);
+            setGatewayRevision((revision) => revision + 1);
+          } else {
+            clearCheckoutRequestId();
+          }
           setRecoveryRequestId(null);
           setRecoveryPending(false);
         } else {
@@ -544,6 +610,17 @@ export default function Checkout() {
         setRecoveryRequestId(null);
         setRecoveryPending(false);
 
+        window.location.href = data.paymentUrl;
+        return;
+      }
+
+      if (data.gateway === "revantpay") {
+        if (typeof data.paymentUrl !== "string" || !data.paymentUrl) {
+          throw new Error("A Revant Pay não retornou o link de pagamento.");
+        }
+
+        setRecoveryRequestId(null);
+        setRecoveryPending(false);
         window.location.href = data.paymentUrl;
         return;
       }
@@ -664,6 +741,33 @@ export default function Checkout() {
             : isPixPaid
               ? "Seu pagamento foi confirmado pela BravoPay."
               : "O pedido ainda não está confirmado.";
+
+  if (isRevantReturn) {
+    const canceled = revantReturn === "cancelado";
+    return (
+      <main className="checkout-page">
+        <div className="checkout-empty">
+          <Clock3 size={42} strokeWidth={1.3} />
+          <h1>{canceled ? "Você saiu do checkout da Revant Pay" : "Pagamento em verificação"}</h1>
+          <p>O status do pagamento ainda está pendente de confirmação na ILUME.</p>
+          {canceled ? <Link to="/checkout">Voltar ao checkout</Link> : <Link to="/">Voltar para a loja</Link>}
+        </div>
+      </main>
+    );
+  }
+
+  if (revantPaymentUrl) {
+    return (
+      <main className="checkout-page">
+        <div className="checkout-empty" role="region" aria-labelledby="revantpay-recovery-title">
+          <Lock size={42} strokeWidth={1.3} />
+          <h1 id="revantpay-recovery-title">Pagamento pendente</h1>
+          <p>Seu link de pagamento está disponível na Revant Pay.</p>
+          <a href={revantPaymentUrl}>Retomar pagamento</a>
+        </div>
+      </main>
+    );
+  }
 
   if (cart.length === 0 && !pixPayment && !addressTestResult) {
     return (
@@ -895,7 +999,9 @@ export default function Checkout() {
               <div className="checkout-alert" role="status">
                 <Clock3 size={18} />
                 <span>
-                  Estamos consultando a mesma cobrança na BravoPay. Esta tela pode permanecer aberta; não será criada outra cobrança durante a consulta.
+                  {gateway === "revantpay"
+                    ? "Estamos consultando o link de pagamento deste pedido na Revant Pay."
+                    : "Estamos consultando a mesma cobrança na BravoPay. Esta tela pode permanecer aberta; não será criada outra cobrança durante a consulta."}
                 </span>
               </div>
             )}
@@ -1159,6 +1265,16 @@ export default function Checkout() {
                           Você será direcionado ao ambiente seguro do
                           Mercado Pago para concluir o pagamento.
                         </small>
+                      </div>
+                    </div>
+                  ) : gateway === "revantpay" ? (
+                    <div className="checkout-payment-option checkout-payment-option-selected">
+                      <div className="checkout-payment-icon">
+                        <Lock size={21} />
+                      </div>
+                      <div className="checkout-payment-info">
+                        <strong>Revant Pay</strong>
+                        <small>Você será direcionado à Revant Pay para concluir o pagamento.</small>
                       </div>
                     </div>
                   ) : gateway === "bravopay" ? (
